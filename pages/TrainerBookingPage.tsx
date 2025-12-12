@@ -1,16 +1,22 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useDataStore } from '../store';
 import { Card, Button, Badge } from '../components/ui/Common';
-import { Clock, ArrowRight, User as UserIcon, Calendar, CheckCircle, Star, Award } from 'lucide-react';
+import { Clock, ArrowRight, User as UserIcon, Calendar, CheckCircle, Star, Award, Loader2 } from 'lucide-react';
 
 export const TrainerBookingPage = () => {
   const { slug } = useParams();
   const { eventTypes, trainers, fetchData } = useDataStore();
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetchData();
+    const loadData = async () => {
+      setIsLoading(true);
+      await fetchData();
+      setIsLoading(false);
+    };
+    loadData();
   }, [fetchData]);
 
   // Debug logging
@@ -19,6 +25,18 @@ export const TrainerBookingPage = () => {
 
   // Find trainer by slug
   const trainer = trainers.find(t => t.slug === slug);
+
+  // Show loading state while fetching data
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-accent animate-spin mx-auto mb-4" />
+          <p className="text-slate-600 text-lg font-medium">Loading trainer profile...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!trainer) {
     return (
