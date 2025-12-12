@@ -4,11 +4,18 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useDataStore } from '../store';
 import { generateAvailableSlots } from '../utils/availability';
 import { Card, Button, Input } from '../components/ui/Common';
-import { Calendar as CalendarIcon, Clock, ChevronLeft, Check, User as UserIcon } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, ChevronLeft, Check, User as UserIcon, Globe } from 'lucide-react';
 import { format, addDays, startOfToday } from 'date-fns';
 import { z } from 'zod';
 import { GeneratedTimeSlot } from '../types';
 import toast from 'react-hot-toast';
+import { 
+  getUserTimezone, 
+  getTimezoneDisplayName, 
+  isDifferentTimezone,
+  formatInTimezone,
+  SYSTEM_TIMEZONE
+} from '../utils/timezone';
 
 // Simple Calendar Component
 const MiniCalendar = ({ selectedDate, onSelectDate }: { selectedDate: Date, onSelectDate: (d: Date) => void }) => {
@@ -65,6 +72,12 @@ export const BookingPage = () => {
     note: ''
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  
+  // Timezone handling
+  const [userTimezone] = useState(getUserTimezone());
+  const [showDifferentTimezone] = useState(isDifferentTimezone(userTimezone));
+  const userTimezoneDisplay = getTimezoneDisplayName(userTimezone);
+  const systemTimezoneDisplay = getTimezoneDisplayName(SYSTEM_TIMEZONE);
 
   useEffect(() => {
     fetchData();
@@ -177,11 +190,21 @@ export const BookingPage = () => {
                 </div>
               )}
               {selectedSlot && (
-                <div className="flex items-center text-primary font-medium">
-                  <CalendarIcon className="w-4 h-4 mr-3" />
-                  {format(selectedSlot.start, 'EEEE, MMMM d')}
-                  <br />
-                  {format(selectedSlot.start, 'HH:mm')} - {format(selectedSlot.end, 'HH:mm')}
+                <div className="text-primary font-medium">
+                  <div className="flex items-start mb-2">
+                    <CalendarIcon className="w-4 h-4 mr-3 mt-0.5" />
+                    <div>
+                      <div>{format(selectedSlot.start, 'EEEE, MMMM d')}</div>
+                      <div className="mt-1">
+                        {formatInTimezone(selectedSlot.start, 'HH:mm', userTimezone)} - {formatInTimezone(selectedSlot.end, 'HH:mm', userTimezone)}
+                      </div>
+                      {showDifferentTimezone && (
+                        <div className="text-xs text-slate-500 mt-1">
+                          {userTimezoneDisplay}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -199,30 +222,49 @@ export const BookingPage = () => {
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold mb-4">Select Time</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold">Select Time</h3>
+                  {showDifferentTimezone && (
+                    <div className="flex items-center text-xs text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">
+                      <Globe className="w-3.5 h-3.5 mr-1.5" />
+                      <span>{userTimezoneDisplay}</span>
+                    </div>
+                  )}
+                </div>
                 {slots.length === 0 ? (
                   <div className="text-center py-8 text-slate-500 bg-slate-50 rounded-lg">
                     No slots available for this date.
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {slots.map((slot, idx) => {
-                      const isSelected = selectedSlot?.start.getTime() === slot.start.getTime();
-                      return (
-                        <button
-                          key={idx}
-                          onClick={() => handleSlotSelect(slot)}
-                          className={`py-2 px-3 text-sm font-medium rounded-md border transition-all ${
-                            isSelected
-                              ? 'border-slate-900 bg-slate-900 text-white shadow-md'
-                              : 'border-slate-200 hover:border-accent hover:text-accent'
-                          }`}
-                        >
-                          {format(slot.start, 'HH:mm')}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {slots.map((slot, idx) => {
+                        const isSelected = selectedSlot?.start.getTime() === slot.start.getTime();
+                        const displayTime = formatInTimezone(slot.start, 'HH:mm', userTimezone);
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => handleSlotSelect(slot)}
+                            className={`py-2 px-3 text-sm font-medium rounded-md border transition-all ${
+                              isSelected
+                                ? 'border-slate-900 bg-slate-900 text-white shadow-md'
+                                : 'border-slate-200 hover:border-accent hover:text-accent'
+                            }`}
+                          >
+                            {displayTime}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {showDifferentTimezone && (
+                      <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-xs text-blue-800">
+                          <span className="font-medium">📍 Lưu ý:</span> Thời gian hiển thị đã được chuyển đổi sang múi giờ của bạn ({userTimezoneDisplay}). 
+                          Hệ thống lưu trữ theo giờ Vietnam ({systemTimezoneDisplay}).
+                        </p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
