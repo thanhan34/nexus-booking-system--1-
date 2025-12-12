@@ -10,6 +10,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import { Login } from './pages/Login';
 import { useAuthStore } from './store';
 import { Layout } from './components/ui/Layout';
+import { SimpleLayout } from './components/ui/SimpleLayout';
 import { Toaster } from 'react-hot-toast';
 
 // Protected Route Component
@@ -47,13 +48,13 @@ const App: React.FC = () => {
       <Routes>
         <Route path="/" element={<Layout><Home /></Layout>} />
         
-        {/* Standard Flow: Select Event -> Select Trainer */}
-        <Route path="/book/:eventTypeId" element={<Layout><BookingPage /></Layout>} />
+        {/* Standard Flow: Select Event -> Select Trainer - Use SimpleLayout for students */}
+        <Route path="/book/:eventTypeId" element={<SimpleLayout><BookingPage /></SimpleLayout>} />
         
-        {/* New Flow: Trainer Specific Page via Slug */}
-        <Route path="/trainer/:slug" element={<Layout><TrainerBookingPage /></Layout>} />
+        {/* New Flow: Trainer Specific Page via Slug - Use SimpleLayout for students */}
+        <Route path="/trainer/:slug" element={<SimpleLayout><TrainerBookingPage /></SimpleLayout>} />
         
-        <Route path="/success/:bookingId" element={<Layout><SuccessPage /></Layout>} />
+        <Route path="/success/:bookingId" element={<SimpleLayout><SuccessPage /></SimpleLayout>} />
         <Route path="/login" element={<Layout><Login /></Layout>} />
         
         <Route 

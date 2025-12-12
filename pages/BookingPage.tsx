@@ -73,8 +73,29 @@ export const BookingPage = () => {
   const eventType = eventTypes.find(e => e.id === eventTypeId);
   const requestedTrainer = requestedTrainerId ? trainers.find(t => t.id === requestedTrainerId) : null;
 
+  // Debug logging
+  useEffect(() => {
+    console.log('📊 [BookingPage] Data loaded:', {
+      eventTypes: eventTypes.length,
+      trainers: trainers.length,
+      bookings: bookings.length,
+      blockedSlots: blockedSlots.length,
+      eventTypeId,
+      requestedTrainerId,
+      requestedTrainer: requestedTrainer?.name
+    });
+  }, [eventTypes, trainers, bookings, blockedSlots, eventTypeId, requestedTrainerId, requestedTrainer]);
+
   useEffect(() => {
     if (eventType && trainers.length > 0) {
+      console.log('🔄 [BookingPage] Generating slots for:', {
+        date: selectedDate,
+        eventType: eventType.name,
+        trainersCount: trainers.length,
+        bookingsCount: bookings.length,
+        requestedTrainerId
+      });
+      
       const availableSlots = generateAvailableSlots(
         selectedDate, 
         eventType, 
@@ -84,6 +105,8 @@ export const BookingPage = () => {
         externalBookings, 
         requestedTrainerId || undefined
       );
+      
+      console.log('✅ [BookingPage] Generated slots:', availableSlots.length);
       setSlots(availableSlots);
     }
   }, [selectedDate, eventType, trainers, bookings, blockedSlots, externalBookings, requestedTrainerId]);
