@@ -200,13 +200,26 @@ export const useAuthStore = create<AuthState>((set) => ({
             // Ensure user has a slug
             userData = await ensureUserSlug(user.uid, userData, userDocRef);
             
+            // Save photoUrl to database if available
+            if (user.photoURL && user.photoURL !== userData.photoUrl) {
+              try {
+                const { setDoc } = await import("firebase/firestore");
+                await setDoc(userDocRef, { photoUrl: user.photoURL }, { merge: true });
+                userData.photoUrl = user.photoURL;
+                console.log('💾 [PHOTO SYNC] Saved photoUrl to database:', user.photoURL);
+              } catch (error) {
+                console.error('⚠️ [PHOTO SYNC] Failed to save photoUrl:', error);
+              }
+            }
+            
             console.log('✅✅✅ [SUCCESS - UID MATCH] Found user by UID!', {
               uid: user.uid,
               role: userRole,
               roleLowerCase: userRole.toLowerCase(),
               email: userData.email,
               slug: userData.slug,
-              availability: userData.availability
+              availability: userData.availability,
+              photoUrl: user.photoURL || userData.photoUrl
             });
             set({ 
               user: { 
@@ -217,7 +230,8 @@ export const useAuthStore = create<AuthState>((set) => ({
                 availability: userData.availability,
                 slug: userData.slug,
                 googleCalendarConnected: userData.googleCalendarConnected,
-                googleCalendarEmail: userData.googleCalendarEmail
+                googleCalendarEmail: userData.googleCalendarEmail,
+                photoUrl: user.photoURL || userData.photoUrl
               }, 
               loading: false 
             });
@@ -251,7 +265,8 @@ export const useAuthStore = create<AuthState>((set) => ({
             email: user.email,
             role: userRole,
             slug: userData.slug,
-            roleLowerCase: userRole.toLowerCase()
+            roleLowerCase: userRole.toLowerCase(),
+            photoUrl: user.photoURL || userData.photoUrl
           });
           set({ 
             user: { 
@@ -262,7 +277,8 @@ export const useAuthStore = create<AuthState>((set) => ({
               availability: userData.availability,
               slug: userData.slug,
               googleCalendarConnected: userData.googleCalendarConnected,
-              googleCalendarEmail: userData.googleCalendarEmail
+              googleCalendarEmail: userData.googleCalendarEmail,
+              photoUrl: user.photoURL || userData.photoUrl
             }, 
             loading: false 
           });

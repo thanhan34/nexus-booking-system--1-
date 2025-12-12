@@ -70,8 +70,25 @@ export const TrainerBookingPage = () => {
           <div className="flex flex-col md:flex-row items-center gap-8">
             {/* Avatar */}
             <div className="relative">
-              <div className="bg-white/95 p-6 rounded-3xl shadow-xl backdrop-blur-sm transform hover:scale-105 transition-transform">
-                <UserIcon className="w-20 h-20 text-accent" />
+              <div className="bg-white/95 p-1 rounded-3xl shadow-xl backdrop-blur-sm transform hover:scale-105 transition-transform">
+                {trainer.photoUrl ? (
+                  <img 
+                    src={trainer.photoUrl} 
+                    alt={trainer.name} 
+                    className="w-32 h-32 rounded-3xl object-cover"
+                    onError={(e) => {
+                      // Fallback to icon if image fails to load
+                      e.currentTarget.style.display = 'none';
+                      const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
+                  />
+                ) : null}
+                <div 
+                  className={`w-32 h-32 rounded-3xl bg-gradient-to-br from-accent to-accent-light flex items-center justify-center ${trainer.photoUrl ? 'hidden' : 'flex'}`}
+                >
+                  <UserIcon className="w-16 h-16 text-white" />
+                </div>
               </div>
               <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-2 shadow-lg">
                 <Award className="w-6 h-6 text-accent" />

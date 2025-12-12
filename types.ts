@@ -8,6 +8,7 @@ export interface User {
   googleCalendarConnected?: boolean;
   googleCalendarEmail?: string;
   eventTypes?: string[];
+  photoUrl?: string;
 }
 
 export interface WeeklyAvailability {
