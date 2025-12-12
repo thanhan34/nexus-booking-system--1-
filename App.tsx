@@ -1,6 +1,6 @@
 
 import React, { useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Home } from './pages/Home';
 import { BookingPage } from './pages/BookingPage';
 import { TrainerBookingPage } from './pages/TrainerBookingPage';
@@ -43,7 +43,7 @@ const App: React.FC = () => {
   }, [init]);
 
   return (
-    <HashRouter>
+    <BrowserRouter>
       <Toaster position="top-right" />
       <Routes>
         <Route path="/" element={<Layout><Home /></Layout>} />
@@ -75,7 +75,7 @@ const App: React.FC = () => {
           } 
         />
       </Routes>
-    </HashRouter>
+    </BrowserRouter>
   );
 };
 

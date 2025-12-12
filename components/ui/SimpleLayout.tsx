@@ -10,9 +10,11 @@ export const SimpleLayout = ({ children }: { children?: React.ReactNode }) => {
         <div className="mx-auto max-w-7xl flex items-center justify-center">
           {/* Logo Section - Centered */}
           <Link to="/" className="flex items-center gap-3 font-bold text-2xl group transition-transform hover:scale-105">
-            <div className="p-2 bg-gradient-to-br from-accent to-accent-light rounded-xl shadow-lg group-hover:shadow-xl transition-shadow">
-              <Calendar className="w-6 h-6 text-white" />
-            </div>
+            <img 
+              src="/images/white_logo-removebg-preview.png" 
+              alt="PTE Intensive Logo" 
+              className="w-24 h-24 object-contain transition-transform group-hover:scale-110"
+            />
             <span className="bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
               PTE<span className="bg-gradient-to-r from-accent to-accent-light bg-clip-text text-transparent">Intensive</span>
             </span>
