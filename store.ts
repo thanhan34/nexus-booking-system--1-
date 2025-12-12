@@ -5,7 +5,7 @@ import app from './services/firebase';
 import { getFirestore, collection, addDoc, deleteDoc, doc, getDocs, updateDoc, query, where } from "firebase/firestore";
 import { addDays } from 'date-fns';
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "firebase/auth";
-import { createBookingCalendarEvents, deleteBookingCalendarEvents } from './services/calendar';
+import { createBookingCalendarEvent, deleteBookingCalendarEvent } from './services/calendar';
 
 interface AuthState {
   user: User | null;
@@ -410,16 +410,23 @@ export const useDataStore = create<DataState>((set, get) => ({
     const docRef = await addDoc(bookingRef, bookingData);
     let newBooking = { id: docRef.id, ...bookingData } as Booking;
     
-    // Try to create Google Calendar events
+    // Try to create Google Calendar event
     try {
       const { trainers, eventTypes } = get();
       const trainer = trainers.find(t => t.id === bookingData.trainerId);
       const eventType = eventTypes.find(et => et.id === bookingData.eventTypeId);
       
-      if (trainer && trainer.email && eventType) {
-        console.log('🗓️ Creating Google Calendar events...');
+      // Only create calendar event if trainer has connected their Google Calendar
+      if (trainer && trainer.email && eventType && trainer.googleCalendarConnected) {
+        console.log('🗓️ Creating Google Calendar event...');
+        console.log('📧 Trainer:', trainer.name, '|', trainer.email);
+        console.log('👤 Student:', bookingData.studentName, '|', bookingData.studentEmail);
+        if (trainer.zoomMeetingLink) {
+          console.log('🎥 Zoom Link:', trainer.zoomMeetingLink);
+        }
         
-        const { trainerEventId, studentEventId } = await createBookingCalendarEvents(
+        const eventId = await createBookingCalendarEvent(
+          trainer.id,
           trainer.email,
           bookingData.studentEmail,
           eventType.name,
@@ -427,29 +434,35 @@ export const useDataStore = create<DataState>((set, get) => ({
           bookingData.studentName,
           new Date(bookingData.startTime),
           new Date(bookingData.endTime),
+          trainer.zoomMeetingLink,
           bookingData.note
         );
         
-        // Update booking with calendar event IDs
+        // Update booking with calendar event ID
         await updateDoc(docRef, {
-          trainerCalendarEventId: trainerEventId,
-          studentCalendarEventId: studentEventId
+          calendarEventId: eventId
         });
         
         newBooking = {
           ...newBooking,
-          trainerCalendarEventId: trainerEventId,
-          studentCalendarEventId: studentEventId
+          calendarEventId: eventId
         };
         
-        console.log('✅ Google Calendar events created successfully');
+        console.log('✅ Google Calendar event created and email sent to student');
       } else {
-        console.log('⚠️ Skipping calendar events: missing trainer or event type info');
+        if (!trainer) {
+          console.log('⚠️ Skipping calendar event: trainer not found');
+        } else if (!trainer.googleCalendarConnected) {
+          console.log('⚠️ Skipping calendar event: trainer has not connected Google Calendar');
+        } else {
+          console.log('⚠️ Skipping calendar event: missing trainer or event type info');
+        }
       }
-    } catch (calendarError) {
-      console.error('❌ Failed to create calendar events:', calendarError);
+    } catch (calendarError: any) {
+      console.error('❌ Failed to create calendar event:', calendarError);
+      console.error('Error details:', calendarError.message);
       // Don't fail the booking if calendar creation fails
-      console.log('✅ Booking created without calendar events');
+      console.log('✅ Booking created without calendar event');
     }
     
     set((state) => ({ bookings: [...state.bookings, newBooking] }));

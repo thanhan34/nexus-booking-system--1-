@@ -9,6 +9,7 @@ export interface User {
   googleCalendarEmail?: string;
   eventTypes?: string[];
   photoUrl?: string;
+  zoomMeetingLink?: string;
 }
 
 export interface WeeklyAvailability {
@@ -59,8 +60,8 @@ export interface Booking {
   note?: string;
   status: string;
   isRecurring?: boolean;
-  trainerCalendarEventId?: string;
-  studentCalendarEventId?: string;
+  calendarEventId?: string; // Google Calendar event ID (on trainer's calendar with student as attendee)
+  recurringGroupId?: string; // For recurring bookings
 }
 
 export interface BlockedSlot {

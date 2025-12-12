@@ -29,12 +29,17 @@ import {
   LayoutGrid,
   Ban,
   Search,
-  History
+  History,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 import { AvailabilitySlot, Booking, BlockedSlot, ExternalBooking } from '../types';
 import toast from 'react-hot-toast';
 import AvailabilityForm from '../components/AvailabilityForm';
 import { BlockedDaysManager } from '../components/BlockedDaysManager';
+import { authorizeTrainerCalendar, saveTrainerTokens } from '../services/calendar';
+import { getFirestore, doc, deleteDoc } from 'firebase/firestore';
+import app from '../services/firebase';
 
 export const TrainerDashboard = () => {
   const { user } = useAuthStore();
@@ -75,12 +80,46 @@ export const TrainerDashboard = () => {
 
   const handleGoogleSync = async () => {
     if (user.googleCalendarConnected) {
-      await updateUserProfile(user.id, { googleCalendarConnected: false, googleCalendarEmail: undefined });
-      toast.success("Disconnected from Google Calendar");
+      // Disconnect
+      try {
+        // Delete tokens from Firestore
+        const db = getFirestore(app);
+        const tokenDocRef = doc(db, 'userCredentials', user.id);
+        await deleteDoc(tokenDocRef);
+        
+        // Update user profile
+        await updateUserProfile(user.id, { 
+          googleCalendarConnected: false, 
+          googleCalendarEmail: undefined 
+        });
+        
+        toast.success("Disconnected from Google Calendar");
+      } catch (error) {
+        console.error('Error disconnecting:', error);
+        toast.error("Failed to disconnect Google Calendar");
+      }
     } else {
-      const mockEmail = user.email.replace('@nexus.com', '@gmail.com');
-      await updateUserProfile(user.id, { googleCalendarConnected: true, googleCalendarEmail: mockEmail });
-      toast.success("Connected to Google Calendar");
+      // Connect
+      try {
+        toast.loading("Opening Google authorization...", { id: 'google-auth' });
+        
+        // Start OAuth flow
+        const tokens = await authorizeTrainerCalendar();
+        
+        // Save tokens securely
+        await saveTrainerTokens(user.id, tokens);
+        
+        // Update user profile
+        await updateUserProfile(user.id, { 
+          googleCalendarConnected: true, 
+          googleCalendarEmail: tokens.email 
+        });
+        
+        toast.success("Connected to Google Calendar!", { id: 'google-auth' });
+      } catch (error: any) {
+        console.error('Error connecting:', error);
+        toast.error(error.message || "Failed to connect Google Calendar", { id: 'google-auth' });
+      }
     }
   };
 
@@ -212,7 +251,24 @@ export const TrainerDashboard = () => {
       )}
 
       {activeTab === 'settings' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in duration-500">
+        <div className="space-y-6 animate-in fade-in duration-500">
+          {/* Zoom Meeting Link Card */}
+          <Card className="p-6 space-y-4">
+            <div>
+              <h3 className="font-bold text-lg mb-1">Zoom Meeting Link</h3>
+              <p className="text-xs text-slate-500">Students will receive this link in booking emails and calendar events</p>
+            </div>
+            
+            <ZoomLinkEditor userId={user.id} currentLink={user.zoomMeetingLink || ''} />
+            
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs text-blue-800">
+                <span className="font-semibold">💡 Tip:</span> Use a Personal Meeting ID (PMI) for consistency, or create a dedicated meeting room for your coaching sessions.
+              </p>
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card className="p-6 space-y-4">
             <h3 className="font-bold text-lg">Personal Booking Page</h3>
             <p className="text-sm text-slate-600">Share this link with students to let them book sessions specifically with you.</p>
@@ -243,31 +299,96 @@ export const TrainerDashboard = () => {
 
           <Card className="p-6 space-y-4">
             <div className="flex justify-between items-start">
-              <h3 className="font-bold text-lg">Google Calendar Sync</h3>
-              <Badge className={user.googleCalendarConnected ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600"}>
-                {user.googleCalendarConnected ? "Connected" : "Not Connected"}
+              <div>
+                <h3 className="font-bold text-lg mb-1">Google Calendar Integration</h3>
+                <p className="text-xs text-slate-500">Automatically create calendar events and send invitations</p>
+              </div>
+              <Badge className={user.googleCalendarConnected ? "bg-green-100 text-green-700 border-green-200 flex items-center gap-1" : "bg-slate-100 text-slate-600 flex items-center gap-1"}>
+                {user.googleCalendarConnected ? (
+                  <>
+                    <CheckCircle2 className="w-3 h-3" />
+                    Connected
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-3 h-3" />
+                    Not Connected
+                  </>
+                )}
               </Badge>
             </div>
             
             {user.googleCalendarConnected ? (
               <div className="space-y-4">
-                <p className="text-sm text-slate-600">
-                  Synced with <span className="font-medium text-slate-900">{user.googleCalendarEmail}</span>.
-                  Your PTE Intensive bookings will appear on your Google Calendar, and Google Calendar events will block slots on PTE Intensive.
-                </p>
-                <Button variant="outline" className="w-full" onClick={handleGoogleSync}>Disconnect</Button>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-green-900 mb-1">
+                        Connected to {user.googleCalendarEmail}
+                      </p>
+                      <p className="text-xs text-green-700">
+                        New bookings will automatically create calendar events and send email invitations to students.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <h4 className="text-xs font-semibold text-blue-900 mb-2">How it works:</h4>
+                  <ul className="text-xs text-blue-800 space-y-1 list-disc list-inside">
+                    <li>Calendar events are created on your Google Calendar</li>
+                    <li>Students receive email invitations automatically</li>
+                    <li>Reminders sent 1 day and 1 hour before sessions</li>
+                    <li>Students can accept/decline invitations</li>
+                  </ul>
+                </div>
+                
+                <Button 
+                  variant="outline" 
+                  className="w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200" 
+                  onClick={handleGoogleSync}
+                >
+                  Disconnect Google Calendar
+                </Button>
               </div>
             ) : (
               <div className="space-y-4">
-                <p className="text-sm text-slate-600">
-                  Connect your Google Calendar to automatically sync bookings and prevent double-booking.
-                </p>
-                <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={handleGoogleSync}>
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                  <p className="text-sm text-slate-700 mb-3">
+                    Connect your Google Calendar to:
+                  </p>
+                  <ul className="text-sm text-slate-600 space-y-2">
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-600 mt-0.5">✓</span>
+                      <span>Automatically create calendar events for new bookings</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-600 mt-0.5">✓</span>
+                      <span>Send email invitations to students</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-600 mt-0.5">✓</span>
+                      <span>Set automatic reminders for both you and students</span>
+                    </li>
+                  </ul>
+                </div>
+                
+                <Button 
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white" 
+                  onClick={handleGoogleSync}
+                >
+                  <CalendarIcon className="w-4 h-4 mr-2" />
                   Connect Google Calendar
                 </Button>
+                
+                <p className="text-xs text-slate-500 text-center">
+                  You'll be asked to authorize access to your Google Calendar
+                </p>
               </div>
             )}
           </Card>
+          </div>
         </div>
       )}
     </div>
@@ -427,6 +548,114 @@ const ScheduleEditor = ({ user, onSave }: { user: any, onSave: any }) => {
         })}
       </div>
     </Card>
+  );
+};
+
+const ZoomLinkEditor = ({ userId, currentLink }: { userId: string, currentLink: string }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [zoomLink, setZoomLink] = useState(currentLink);
+  const [isSaving, setIsSaving] = useState(false);
+  const { updateUserProfile } = useDataStore();
+
+  const validateZoomLink = (link: string): boolean => {
+    if (!link) return true; // Empty is valid (can be removed)
+    
+    // Extract URL from text if it's a full Zoom invitation block
+    const urlMatch = link.match(/https?:\/\/[^\s]+/);
+    const urlToValidate = urlMatch ? urlMatch[0] : link;
+    
+    // Check if it's a valid URL and contains zoom
+    try {
+      const url = new URL(urlToValidate);
+      // Accept zoom.us, zoom.com, and regional subdomains (us06web.zoom.us, etc.)
+      return url.hostname.endsWith('zoom.us') || 
+             url.hostname.endsWith('zoom.com') || 
+             url.hostname.includes('.zoom.us') ||
+             url.hostname.includes('.zoom.com');
+    } catch {
+      return false;
+    }
+  };
+
+  const handleSave = async () => {
+    // Keep the full text as entered
+    const linkToSave = zoomLink.trim();
+    
+    // Validate that it contains a valid Zoom URL
+    if (linkToSave && !validateZoomLink(linkToSave)) {
+      toast.error("Please enter a valid Zoom meeting link");
+      return;
+    }
+
+    if (linkToSave === currentLink) {
+      setIsEditing(false);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await updateUserProfile(userId, { zoomMeetingLink: linkToSave || undefined });
+      toast.success("Zoom meeting link updated successfully!");
+      setIsEditing(false);
+    } catch (error) {
+      toast.error("Failed to update Zoom link");
+      console.error(error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setZoomLink(currentLink);
+    setIsEditing(false);
+  };
+
+  if (isEditing) {
+    return (
+      <div className="space-y-2">
+        <textarea
+          value={zoomLink}
+          onChange={(e) => setZoomLink(e.target.value)}
+          placeholder="Paste your full Zoom invitation here..."
+          className="w-full rounded-md border border-slate-300 p-2 text-sm font-mono focus:ring-2 focus:ring-slate-900 focus:outline-none"
+          rows={4}
+          disabled={isSaving}
+        />
+        <div className="flex gap-2">
+          <Button onClick={handleSave} disabled={isSaving} size="sm">
+            {isSaving ? 'Saving...' : 'Save'}
+          </Button>
+          <Button onClick={handleCancel} variant="outline" size="sm" disabled={isSaving}>
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {currentLink ? (
+        <div className="space-y-2">
+          <textarea
+            value={currentLink}
+            readOnly
+            className="w-full bg-slate-50 font-mono text-sm rounded-md border border-slate-200 p-2 resize-none"
+            rows={4}
+          />
+          <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
+            Edit
+          </Button>
+        </div>
+      ) : (
+        <div>
+          <p className="text-sm text-slate-500 mb-2">No Zoom link set</p>
+          <Button onClick={() => setIsEditing(true)} size="sm">
+            Add Zoom Link
+          </Button>
+        </div>
+      )}
+    </div>
   );
 };
 
