@@ -1,12 +1,9 @@
-import { format } from 'date-fns';
-import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import app from './firebase';
 
-export interface CalendarConfig {
-  apiKey?: string;
-  clientId?: string;
-  scopes: string[];
-}
+// ============================================================================
+// INTERFACES & TYPES
+// ============================================================================
 
 export interface CalendarEvent {
   summary: string;
@@ -30,148 +27,211 @@ export interface CalendarEvent {
       minutes: number;
     }>;
   };
+  location?: string;
 }
 
-export interface TrainerTokens {
-  accessToken: string;
+export interface TrainerCalendarCredentials {
   refreshToken: string;
-  expiryDate: number;
   email: string;
+  connectedAt: string;
 }
 
-// Google Calendar API Configuration
-const CALENDAR_CONFIG: CalendarConfig = {
-  apiKey: (import.meta as any).env?.VITE_GOOGLE_API_KEY,
-  clientId: (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID,
-  scopes: [
-    'https://www.googleapis.com/auth/calendar.events',
-    'https://www.googleapis.com/auth/calendar',
-    'https://www.googleapis.com/auth/userinfo.email',
-    'openid'
-  ]
-};
-
-let gapiInited = false;
-let gisInited = false;
-let tokenClient: any = null;
-
-// Firestore collection for secure token storage
-const TOKENS_COLLECTION = 'userCredentials';
-
-/**
- * Initialize Google API (gapi) and Google Identity Services (gis)
- */
-export const initGoogleCalendar = async (): Promise<void> => {
-  if (gapiInited && gisInited) {
-    return Promise.resolve();
+// Custom error for calendar disconnection
+export class CalendarDisconnectedError extends Error {
+  constructor(message: string, public reason: 'invalid_grant' | 'revoked' | 'network_error') {
+    super(message);
+    this.name = 'CalendarDisconnectedError';
   }
+}
 
-  return new Promise((resolve, reject) => {
-    let gapiLoaded = false;
-    let gisLoaded = false;
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
 
-    const checkBothLoaded = () => {
-      if (gapiLoaded && gisLoaded) {
-        resolve();
-      }
-    };
+const GOOGLE_CLIENT_ID = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = (import.meta as any).env?.VITE_GOOGLE_CLIENT_SECRET;
+const REDIRECT_URI = typeof window !== 'undefined' 
+  ? `${window.location.origin}/oauth/callback` 
+  : 'http://localhost:5173/oauth/callback';
 
-    // Load gapi script
-    if (!gapiInited) {
-      const gapiScript = document.createElement('script');
-      gapiScript.src = 'https://apis.google.com/js/api.js';
-      gapiScript.async = true;
-      gapiScript.defer = true;
-      gapiScript.onload = () => {
-        (window as any).gapi.load('client', async () => {
-          try {
-            await (window as any).gapi.client.init({
-              apiKey: CALENDAR_CONFIG.apiKey,
-              discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest']
-            });
-            gapiInited = true;
-            gapiLoaded = true;
-            console.log('✅ Google Calendar API initialized');
-            checkBothLoaded();
-          } catch (error) {
-            console.error('❌ Error initializing gapi:', error);
-            reject(error);
-          }
-        });
-      };
-      gapiScript.onerror = () => reject(new Error('Failed to load Google API script'));
-      document.body.appendChild(gapiScript);
-    } else {
-      gapiLoaded = true;
-      checkBothLoaded();
-    }
+const SCOPES = [
+  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/userinfo.email',
+];
 
-    // Load Google Identity Services (gis) script
-    if (!gisInited) {
-      const gisScript = document.createElement('script');
-      gisScript.src = 'https://accounts.google.com/gsi/client';
-      gisScript.async = true;
-      gisScript.defer = true;
-      gisScript.onload = () => {
-        gisInited = true;
-        gisLoaded = true;
-        console.log('✅ Google Identity Services loaded');
-        checkBothLoaded();
-      };
-      gisScript.onerror = () => reject(new Error('Failed to load Google Identity Services script'));
-      document.body.appendChild(gisScript);
-    } else {
-      gisLoaded = true;
-      checkBothLoaded();
-    }
+// Firestore collection for secure credential storage
+const CREDENTIALS_COLLECTION = 'userCredentials';
+
+// ============================================================================
+// OAUTH FLOW - AUTHORIZATION
+// ============================================================================
+
+/**
+ * Generate Google OAuth authorization URL
+ * CRITICAL: Must use access_type=offline and prompt=consent to get refresh token
+ */
+export const getGoogleAuthUrl = (): string => {
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID || '',
+    redirect_uri: REDIRECT_URI,
+    response_type: 'code',
+    scope: SCOPES.join(' '),
+    access_type: 'offline', // MUST HAVE: This ensures we get refresh token
+    prompt: 'consent',      // MUST HAVE: Force consent screen to guarantee refresh token
+    include_granted_scopes: 'true',
   });
+  
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  console.log('🔐 Generated OAuth URL with offline access');
+  
+  return authUrl;
 };
 
 /**
- * Save trainer's tokens securely to Firestore
+ * Exchange authorization code for tokens using REST API
+ * Called after user authorizes and is redirected back
  */
-export const saveTrainerTokens = async (
+export const exchangeCodeForTokens = async (code: string): Promise<TrainerCalendarCredentials> => {
+  try {
+    console.log('🔄 Exchanging authorization code for tokens...');
+    
+    // Exchange code for tokens
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        code: code,
+        client_id: GOOGLE_CLIENT_ID || '',
+        client_secret: GOOGLE_CLIENT_SECRET || '',
+        redirect_uri: REDIRECT_URI,
+        grant_type: 'authorization_code',
+      }),
+    });
+    
+    if (!tokenResponse.ok) {
+      const error = await tokenResponse.text();
+      throw new Error(`Failed to exchange code: ${error}`);
+    }
+    
+    const tokens = await tokenResponse.json();
+    
+    if (!tokens.refresh_token) {
+      throw new Error('No refresh token received. User may have already authorized this app.');
+    }
+    
+    // Get user email from token info endpoint
+    const userInfoResponse = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${tokens.access_token}`);
+    
+    if (!userInfoResponse.ok) {
+      throw new Error('Failed to get user info');
+    }
+    
+    const tokenInfo = await userInfoResponse.json();
+    
+    const credentials: TrainerCalendarCredentials = {
+      refreshToken: tokens.refresh_token,
+      email: tokenInfo.email || '',
+      connectedAt: new Date().toISOString(),
+    };
+    
+    console.log('✅ Tokens received successfully');
+    console.log('📧 User email:', credentials.email);
+    console.log('🔑 Refresh token obtained:', !!credentials.refreshToken);
+    
+    return credentials;
+  } catch (error: any) {
+    console.error('❌ Error exchanging code for tokens:', error);
+    throw new Error(`Failed to exchange authorization code: ${error.message}`);
+  }
+};
+
+// ============================================================================
+// CREDENTIAL MANAGEMENT
+// ============================================================================
+
+/**
+ * Save trainer's credentials securely to Firestore
+ * Only stores refresh token, never access token
+ */
+export const saveTrainerCredentials = async (
   trainerId: string,
-  tokens: TrainerTokens
+  credentials: TrainerCalendarCredentials
 ): Promise<void> => {
   const db = getFirestore(app);
-  const tokenDocRef = doc(db, TOKENS_COLLECTION, trainerId);
+  const credentialsRef = doc(db, CREDENTIALS_COLLECTION, trainerId);
   
   try {
-    await setDoc(tokenDocRef, {
-      ...tokens,
-      updatedAt: new Date().toISOString()
+    await setDoc(credentialsRef, {
+      refreshToken: credentials.refreshToken,
+      email: credentials.email,
+      connectedAt: credentials.connectedAt,
+      updatedAt: new Date().toISOString(),
     });
-    console.log('✅ Trainer tokens saved securely');
+    
+    console.log('✅ Credentials saved securely to Firestore');
   } catch (error) {
-    console.error('❌ Error saving trainer tokens:', error);
+    console.error('❌ Error saving credentials:', error);
     throw error;
   }
 };
 
 /**
- * Get trainer's tokens from Firestore
+ * Get trainer's credentials from Firestore
  */
-export const getTrainerTokens = async (trainerId: string): Promise<TrainerTokens | null> => {
+export const getTrainerCredentials = async (trainerId: string): Promise<TrainerCalendarCredentials | null> => {
   const db = getFirestore(app);
-  const tokenDocRef = doc(db, TOKENS_COLLECTION, trainerId);
+  const credentialsRef = doc(db, CREDENTIALS_COLLECTION, trainerId);
   
   try {
-    const tokenDoc = await getDoc(tokenDocRef);
-    if (tokenDoc.exists()) {
-      return tokenDoc.data() as TrainerTokens;
+    const credentialsDoc = await getDoc(credentialsRef);
+    
+    if (!credentialsDoc.exists()) {
+      console.log('⚠️ No credentials found for trainer:', trainerId);
+      return null;
     }
-    return null;
+    
+    const data = credentialsDoc.data();
+    return {
+      refreshToken: data.refreshToken,
+      email: data.email,
+      connectedAt: data.connectedAt,
+    };
   } catch (error) {
-    console.error('❌ Error getting trainer tokens:', error);
+    console.error('❌ Error getting credentials:', error);
     return null;
   }
 };
 
 /**
- * Refresh trainer's access token using refresh token
+ * Delete trainer's credentials from Firestore
  */
-export const refreshTrainerAccessToken = async (refreshToken: string): Promise<{ accessToken: string; expiryDate: number }> => {
+export const deleteTrainerCredentials = async (trainerId: string): Promise<void> => {
+  const db = getFirestore(app);
+  const credentialsRef = doc(db, CREDENTIALS_COLLECTION, trainerId);
+  
+  try {
+    await updateDoc(credentialsRef, {
+      refreshToken: '',
+      deletedAt: new Date().toISOString(),
+    });
+    console.log('✅ Credentials deleted');
+  } catch (error) {
+    console.error('❌ Error deleting credentials:', error);
+  }
+};
+
+// ============================================================================
+// TOKEN MANAGEMENT
+// ============================================================================
+
+/**
+ * Get fresh access token using refresh token
+ * Access tokens expire after 1 hour, this function gets a new one
+ */
+const getAccessTokenFromRefreshToken = async (refreshToken: string): Promise<string> => {
   try {
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -179,129 +239,67 @@ export const refreshTrainerAccessToken = async (refreshToken: string): Promise<{
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        client_id: CALENDAR_CONFIG.clientId || '',
+        client_id: GOOGLE_CLIENT_ID || '',
+        client_secret: GOOGLE_CLIENT_SECRET || '',
         refresh_token: refreshToken,
         grant_type: 'refresh_token',
       }),
     });
-
+    
     if (!response.ok) {
-      throw new Error('Failed to refresh token');
+      const error = await response.json();
+      if (error.error === 'invalid_grant') {
+        throw new CalendarDisconnectedError(
+          'Refresh token has been revoked',
+          'invalid_grant'
+        );
+      }
+      throw new Error(`Failed to refresh token: ${error.error_description || error.error}`);
     }
-
+    
     const data = await response.json();
-    const expiryDate = Date.now() + (data.expires_in * 1000);
-
-    return {
-      accessToken: data.access_token,
-      expiryDate
-    };
+    console.log('✅ Access token refreshed successfully');
+    
+    return data.access_token;
   } catch (error) {
-    console.error('❌ Error refreshing token:', error);
+    console.error('❌ Error refreshing access token:', error);
     throw error;
   }
 };
 
-/**
- * Authorize trainer's Google Calendar - opens OAuth popup
- */
-export const authorizeTrainerCalendar = async (): Promise<TrainerTokens> => {
-  await initGoogleCalendar();
-
-  return new Promise((resolve, reject) => {
-    if (!(window as any).google?.accounts?.oauth2) {
-      reject(new Error('Google Identity Services not loaded'));
-      return;
-    }
-
-    // Use Token Client for client-side OAuth (implicit flow with refresh token)
-    const client = (window as any).google.accounts.oauth2.initTokenClient({
-      client_id: CALENDAR_CONFIG.clientId,
-      scope: CALENDAR_CONFIG.scopes.join(' '),
-      prompt: 'consent', // Force consent to get refresh token
-      callback: async (response: any) => {
-        if (response.error) {
-          console.error('OAuth error:', response);
-          reject(new Error(response.error));
-          return;
-        }
-
-        try {
-          console.log('✅ Access token received', {
-            hasAccessToken: !!response.access_token,
-            expiresIn: response.expires_in
-          });
-          
-          // Get user email from token info endpoint
-          const userInfoResponse = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${response.access_token}`);
-          
-          if (!userInfoResponse.ok) {
-            const errorText = await userInfoResponse.text();
-            console.error('User info error:', errorText);
-            throw new Error(`Failed to get user info: ${userInfoResponse.status}`);
-          }
-          
-          const tokenInfo = await userInfoResponse.json();
-          console.log('✅ Token info received:', { email: tokenInfo.email });
-          
-          const tokens: TrainerTokens = {
-            accessToken: response.access_token,
-            refreshToken: response.refresh_token || '', // May not be provided in implicit flow
-            expiryDate: Date.now() + (response.expires_in * 1000),
-            email: tokenInfo.email
-          };
-
-          console.log('✅ Tokens prepared successfully');
-
-          resolve(tokens);
-        } catch (error: any) {
-          console.error('Error processing OAuth response:', error);
-          reject(new Error(error.message || 'Failed to process OAuth response'));
-        }
-      },
-    });
-
-    // Request access token
-    client.requestAccessToken();
-  });
-};
+// ============================================================================
+// CALENDAR SERVICE - WITH AUTO TOKEN REFRESH
+// ============================================================================
 
 /**
- * Get valid access token for trainer (refreshes if needed)
+ * Create calendar event on trainer's calendar with student as attendee
+ * Automatically handles token refresh
+ * Throws CalendarDisconnectedError if refresh token is invalid
  */
-export const getValidTrainerToken = async (trainerId: string): Promise<string> => {
-  const tokens = await getTrainerTokens(trainerId);
-  
-  if (!tokens) {
-    throw new Error('Trainer has not connected Google Calendar');
-  }
-
-  // Check if token is expired or will expire in next 5 minutes
-  if (tokens.expiryDate < Date.now() + 300000) {
-    console.log('🔄 Token expired, refreshing...');
-    const { accessToken, expiryDate } = await refreshTrainerAccessToken(tokens.refreshToken);
-    
-    // Update stored tokens
-    await saveTrainerTokens(trainerId, {
-      ...tokens,
-      accessToken,
-      expiryDate
-    });
-    
-    return accessToken;
-  }
-
-  return tokens.accessToken;
-};
-
-/**
- * Create a calendar event using trainer's access token
- */
-export const createCalendarEventWithToken = async (
-  accessToken: string,
-  event: CalendarEvent
+export const createCalendarEvent = async (
+  trainerId: string,
+  eventData: CalendarEvent,
+  retryCount = 0
 ): Promise<string> => {
+  const MAX_RETRIES = 2;
+  
   try {
+    // Get trainer's refresh token
+    const credentials = await getTrainerCredentials(trainerId);
+    
+    if (!credentials) {
+      throw new CalendarDisconnectedError(
+        'Trainer has not connected Google Calendar',
+        'revoked'
+      );
+    }
+    
+    // Get fresh access token
+    const accessToken = await getAccessTokenFromRefreshToken(credentials.refreshToken);
+    
+    console.log('📅 Creating calendar event...');
+    
+    // Create event using Google Calendar REST API
     const response = await fetch(
       'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all',
       {
@@ -310,33 +308,89 @@ export const createCalendarEventWithToken = async (
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(event),
+        body: JSON.stringify(eventData),
       }
     );
-
+    
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Calendar API error: ${errorData.error?.message || 'Unknown error'}`);
+      const error = await response.json();
+      
+      if (response.status === 401 || error.error?.message?.includes('invalid_grant')) {
+        throw new CalendarDisconnectedError(
+          'Calendar connection is no longer valid. Please reconnect.',
+          'invalid_grant'
+        );
+      }
+      
+      if (response.status === 403) {
+        throw new CalendarDisconnectedError(
+          'Calendar access has been revoked. Please reconnect.',
+          'revoked'
+        );
+      }
+      
+      throw new Error(`Calendar API error: ${error.error?.message || 'Unknown error'}`);
     }
-
-    const data = await response.json();
-    console.log('✅ Calendar event created:', data.id);
-    return data.id;
-  } catch (error) {
+    
+    const event = await response.json();
+    const eventId = event.id;
+    
+    console.log('✅ Calendar event created:', eventId);
+    
+    return eventId || '';
+  } catch (error: any) {
     console.error('❌ Error creating calendar event:', error);
+    
+    // Already a CalendarDisconnectedError, just rethrow
+    if (error instanceof CalendarDisconnectedError) {
+      throw error;
+    }
+    
+    // Retry on transient errors
+    if (retryCount < MAX_RETRIES && (error.message?.includes('500') || error.message?.includes('503') || error.code === 'ECONNRESET')) {
+      const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff
+      console.log(`⏳ Retrying in ${delay}ms... (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return createCalendarEvent(trainerId, eventData, retryCount + 1);
+    }
+    
+    // Network or other transient errors
+    if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+      throw new CalendarDisconnectedError(
+        'Network error while connecting to Google Calendar',
+        'network_error'
+      );
+    }
+    
     throw error;
   }
 };
 
 /**
- * Update a calendar event using trainer's access token
+ * Update calendar event
  */
-export const updateCalendarEventWithToken = async (
-  accessToken: string,
+export const updateCalendarEvent = async (
+  trainerId: string,
   eventId: string,
-  event: Partial<CalendarEvent>
+  eventData: Partial<CalendarEvent>,
+  retryCount = 0
 ): Promise<void> => {
+  const MAX_RETRIES = 2;
+  
   try {
+    const credentials = await getTrainerCredentials(trainerId);
+    
+    if (!credentials) {
+      throw new CalendarDisconnectedError(
+        'Trainer has not connected Google Calendar',
+        'revoked'
+      );
+    }
+    
+    const accessToken = await getAccessTokenFromRefreshToken(credentials.refreshToken);
+    
+    console.log('📝 Updating calendar event:', eventId);
+    
     const response = await fetch(
       `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}?sendUpdates=all`,
       {
@@ -345,30 +399,71 @@ export const updateCalendarEventWithToken = async (
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(event),
+        body: JSON.stringify(eventData),
       }
     );
-
+    
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Calendar API error: ${errorData.error?.message || 'Unknown error'}`);
+      const error = await response.json();
+      
+      if (response.status === 401 || error.error?.message?.includes('invalid_grant')) {
+        throw new CalendarDisconnectedError(
+          'Calendar connection is no longer valid. Please reconnect.',
+          'invalid_grant'
+        );
+      }
+      
+      if (response.status === 403) {
+        throw new CalendarDisconnectedError(
+          'Calendar access has been revoked. Please reconnect.',
+          'revoked'
+        );
+      }
+      
+      throw new Error(`Calendar API error: ${error.error?.message || 'Unknown error'}`);
     }
-
-    console.log('✅ Calendar event updated:', eventId);
-  } catch (error) {
+    
+    console.log('✅ Calendar event updated');
+  } catch (error: any) {
     console.error('❌ Error updating calendar event:', error);
+    
+    if (error instanceof CalendarDisconnectedError) {
+      throw error;
+    }
+    
+    if (retryCount < MAX_RETRIES && (error.message?.includes('500') || error.message?.includes('503'))) {
+      const delay = Math.pow(2, retryCount) * 1000;
+      console.log(`⏳ Retrying in ${delay}ms... (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return updateCalendarEvent(trainerId, eventId, eventData, retryCount + 1);
+    }
+    
     throw error;
   }
 };
 
 /**
- * Delete a calendar event using trainer's access token
+ * Delete calendar event
  */
-export const deleteCalendarEventWithToken = async (
-  accessToken: string,
-  eventId: string
+export const deleteCalendarEvent = async (
+  trainerId: string,
+  eventId: string,
+  retryCount = 0
 ): Promise<void> => {
+  const MAX_RETRIES = 2;
+  
   try {
+    const credentials = await getTrainerCredentials(trainerId);
+    
+    if (!credentials) {
+      console.log('⚠️ No credentials found, skipping calendar event deletion');
+      return;
+    }
+    
+    const accessToken = await getAccessTokenFromRefreshToken(credentials.refreshToken);
+    
+    console.log('🗑️ Deleting calendar event:', eventId);
+    
     const response = await fetch(
       `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}?sendUpdates=all`,
       {
@@ -378,22 +473,100 @@ export const deleteCalendarEventWithToken = async (
         },
       }
     );
-
-    if (!response.ok && response.status !== 404) {
-      const errorData = await response.json();
-      throw new Error(`Calendar API error: ${errorData.error?.message || 'Unknown error'}`);
+    
+    // 404 means already deleted, that's fine
+    if (response.status === 404) {
+      console.log('ℹ️ Calendar event already deleted or not found');
+      return;
     }
-
-    console.log('✅ Calendar event deleted:', eventId);
-  } catch (error) {
+    
+    if (!response.ok) {
+      const error = await response.json();
+      
+      if (response.status === 401 || error.error?.message?.includes('invalid_grant')) {
+        throw new CalendarDisconnectedError(
+          'Calendar connection is no longer valid. Please reconnect.',
+          'invalid_grant'
+        );
+      }
+      
+      if (response.status === 403) {
+        throw new CalendarDisconnectedError(
+          'Calendar access has been revoked. Please reconnect.',
+          'revoked'
+        );
+      }
+      
+      throw new Error(`Calendar API error: ${error.error?.message || 'Unknown error'}`);
+    }
+    
+    console.log('✅ Calendar event deleted');
+  } catch (error: any) {
     console.error('❌ Error deleting calendar event:', error);
+    
+    if (error instanceof CalendarDisconnectedError) {
+      throw error;
+    }
+    
+    if (retryCount < MAX_RETRIES && (error.message?.includes('500') || error.message?.includes('503'))) {
+      const delay = Math.pow(2, retryCount) * 1000;
+      console.log(`⏳ Retrying in ${delay}ms... (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return deleteCalendarEvent(trainerId, eventId, retryCount + 1);
+    }
+    
     throw error;
   }
 };
 
 /**
- * Create calendar event on trainer's calendar with student as attendee
- * This automatically sends an email invitation to the student
+ * Test calendar connection by attempting to list calendars
+ */
+export const testCalendarConnection = async (trainerId: string): Promise<boolean> => {
+  try {
+    const credentials = await getTrainerCredentials(trainerId);
+    
+    if (!credentials) {
+      return false;
+    }
+    
+    const accessToken = await getAccessTokenFromRefreshToken(credentials.refreshToken);
+    
+    // Try to list calendars as a test
+    const response = await fetch(
+      'https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1',
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      }
+    );
+    
+    if (response.ok) {
+      console.log('✅ Calendar connection is valid');
+      return true;
+    }
+    
+    return false;
+  } catch (error: any) {
+    console.error('❌ Calendar connection test failed:', error);
+    
+    if (error instanceof CalendarDisconnectedError) {
+      return false;
+    }
+    
+    // Network errors don't mean disconnected, just temporary issue
+    return true;
+  }
+};
+
+// ============================================================================
+// HIGH-LEVEL BOOKING INTEGRATION
+// ============================================================================
+
+/**
+ * Create booking calendar event with proper error handling
+ * This is the main function called from store.ts
  */
 export const createBookingCalendarEvent = async (
   trainerId: string,
@@ -409,134 +582,110 @@ export const createBookingCalendarEvent = async (
   studentTimezone?: string,
   bookingId?: string
 ): Promise<string> => {
-  try {
-    // Get trainer's valid access token
-    const accessToken = await getValidTrainerToken(trainerId);
-    
-    // Use student's timezone if provided, otherwise fall back to system timezone
-    const timeZone = studentTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const timeZone = studentTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    // Extract main URL from Zoom invitation block for location field
-    let zoomUrl = '';
-    if (zoomMeetingLink) {
-      const urlMatch = zoomMeetingLink.match(/https?:\/\/[^\s]+/);
-      zoomUrl = urlMatch ? urlMatch[0] : zoomMeetingLink;
-    }
+  // Extract clean Zoom URL for location field
+  let zoomUrl = '';
+  if (zoomMeetingLink) {
+    const urlMatch = zoomMeetingLink.match(/https?:\/\/[^\s]+/);
+    zoomUrl = urlMatch ? urlMatch[0] : zoomMeetingLink;
+  }
 
-    // Format times in both timezones for display
-    const vietnamTZ = 'Asia/Ho_Chi_Minh';
-    const dateFormatOptions: Intl.DateTimeFormatOptions = { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric', 
-      hour: '2-digit', 
-      minute: '2-digit',
-      timeZoneName: 'short'
-    };
-    
-    const vietnamTimeStr = startTime.toLocaleString('vi-VN', { ...dateFormatOptions, timeZone: vietnamTZ });
-    const studentTimeStr = studentTimezone ? startTime.toLocaleString('vi-VN', { ...dateFormatOptions, timeZone: studentTimezone }) : vietnamTimeStr;
+  // Format times in both timezones for display
+  const vietnamTZ = 'Asia/Ho_Chi_Minh';
+  const dateFormatOptions: Intl.DateTimeFormatOptions = { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric', 
+    hour: '2-digit', 
+    minute: '2-digit',
+    timeZoneName: 'short'
+  };
+  
+  const vietnamTimeStr = startTime.toLocaleString('vi-VN', { ...dateFormatOptions, timeZone: vietnamTZ });
+  const studentTimeStr = studentTimezone ? startTime.toLocaleString('vi-VN', { ...dateFormatOptions, timeZone: studentTimezone }) : vietnamTimeStr;
 
-    // Build professional Vietnamese description
-    let description = `📚 ${eventTypeName}\n`;
-    description += `👤 Học viên: ${studentName}\n`;
-    description += `📧 Email: ${studentEmail}\n`;
-    description += `👨‍🏫 Giảng viên: ${trainerName}\n\n`;
-    
-    // Add time information in both timezones
+  // Build professional Vietnamese description
+  let description = `📚 ${eventTypeName}\n`;
+  description += `👤 Học viên: ${studentName}\n`;
+  description += `📧 Email: ${studentEmail}\n`;
+  description += `👨‍🏫 Giảng viên: ${trainerName}\n\n`;
+  
+  description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  description += `⏰ THỜI GIAN HỌC\n`;
+  description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  description += `🇻🇳 Giờ Việt Nam: ${vietnamTimeStr}\n`;
+  if (studentTimezone && studentTimezone !== vietnamTZ) {
+    description += `🌍 Giờ địa phương của bạn: ${studentTimeStr}\n`;
+  }
+  
+  if (zoomMeetingLink) {
+    description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    description += `🎥 THÔNG TIN THAM GIA ZOOM\n`;
+    description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    description += zoomMeetingLink;
+    description += `\n\n💡 Lưu ý: Vui lòng tham gia đúng giờ để không bỏ lỡ buổi học.`;
+  }
+  
+  if (note) {
+    description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    description += `📝 GHI CHÚ\n`;
     description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-    description += `⏰ THỜI GIAN HỌC\n`;
-    description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-    description += `🇻🇳 Giờ Việt Nam: ${vietnamTimeStr}\n`;
-    if (studentTimezone && studentTimezone !== vietnamTZ) {
-      description += `🌍 Giờ địa phương của bạn: ${studentTimeStr}\n`;
-    }
-    
-    if (zoomMeetingLink) {
-      description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      description += `🎥 THÔNG TIN THAM GIA ZOOM\n`;
-      description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-      description += zoomMeetingLink;
-      description += `\n\n💡 Lưu ý: Vui lòng tham gia đúng giờ để không bỏ lỡ buổi học.`;
-    }
-    
-    if (note) {
-      description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      description += `📝 GHI CHÚ\n`;
-      description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      description += note;
-    }
-    
-    // Add cancel/reschedule links if bookingId is provided
-    if (bookingId) {
-      const baseUrl = window.location.origin || 'https://pte-intensive-booking.vercel.app';
-      const cancelUrl = `${baseUrl}/cancel-booking/${bookingId}`;
-      const rescheduleUrl = `${baseUrl}/reschedule-booking/${bookingId}`;
-      
-      description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      description += `📌 QUẢN LÝ LỊCH HỌC\n`;
-      description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;     
-      description += `📅 Đổi lịch học: ${rescheduleUrl}\n`;
-      description += `❌ Hủy lịch học: ${cancelUrl}\n`;
-    }
+    description += note;
+  }
+  
+  if (bookingId) {
+    const baseUrl = window.location.origin || 'https://pte-intensive-booking.vercel.app';
+    const cancelUrl = `${baseUrl}/cancel-booking/${bookingId}`;
+    const rescheduleUrl = `${baseUrl}/reschedule-booking/${bookingId}`;
     
     description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-    description += `Nếu có bất kỳ thắc mắc nào, vui lòng liên hệ giảng viên qua email: ${trainerEmail}`;
-
-    // Create event on trainer's calendar with student as attendee
-    const event: CalendarEvent = {
-      summary: `${eventTypeName} - ${studentName}`,
-      description: description,
-      start: {
-        dateTime: startTime.toISOString(),
-        timeZone: timeZone
-      },
-      end: {
-        dateTime: endTime.toISOString(),
-        timeZone: timeZone
-      },
-      attendees: [
-        { email: studentEmail, displayName: studentName }
-      ],
-      reminders: {
-        useDefault: false,
-        overrides: [
-          { method: 'email', minutes: 24 * 60 }, // 1 day before
-          { method: 'popup', minutes: 60 } // 1 hour before
-        ]
-      }
-    };
-
-    // Add location field with clean URL (shows as clickable link)
-    if (zoomUrl) {
-      (event as any).location = zoomUrl;
-    }
-
-    const eventId = await createCalendarEventWithToken(accessToken, event);
-    
-    console.log('✅ Calendar event created and invitation sent to student');
-    return eventId;
-  } catch (error) {
-    console.error('❌ Error creating booking calendar event:', error);
-    throw error;
+    description += `📌 QUẢN LÝ LỊCH HỌC\n`;
+    description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;     
+    description += `📅 Đổi lịch học: ${rescheduleUrl}\n`;
+    description += `❌ Hủy lịch học: ${cancelUrl}\n`;
   }
+  
+  description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  description += `Nếu có bất kỳ thắc mắc nào, vui lòng liên hệ giảng viên qua email: ${trainerEmail}`;
+
+  const event: CalendarEvent = {
+    summary: `${eventTypeName} - ${studentName}`,
+    description: description,
+    start: {
+      dateTime: startTime.toISOString(),
+      timeZone: timeZone
+    },
+    end: {
+      dateTime: endTime.toISOString(),
+      timeZone: timeZone
+    },
+    attendees: [
+      { email: studentEmail, displayName: studentName }
+    ],
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: 'email', minutes: 24 * 60 }, // 1 day before
+        { method: 'popup', minutes: 60 } // 1 hour before
+      ]
+    }
+  };
+
+  if (zoomUrl) {
+    event.location = zoomUrl;
+  }
+
+  return createCalendarEvent(trainerId, event);
 };
 
 /**
- * Delete booking calendar event from trainer's calendar
- * This automatically notifies the student via email
+ * Delete booking calendar event with proper error handling
  */
 export const deleteBookingCalendarEvent = async (
   trainerId: string,
   eventId: string
 ): Promise<void> => {
-  try {
-    const accessToken = await getValidTrainerToken(trainerId);
-    await deleteCalendarEventWithToken(accessToken, eventId);
-    console.log('✅ Calendar event deleted and cancellation sent to student');
-  } catch (error) {
-    console.error('❌ Error deleting booking calendar event:', error);
-    throw error;
-  }
+  return deleteCalendarEvent(trainerId, eventId);
 };

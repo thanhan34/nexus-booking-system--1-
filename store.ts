@@ -5,7 +5,11 @@ import app from './services/firebase';
 import { getFirestore, collection, addDoc, deleteDoc, doc, getDocs, updateDoc, query, where } from "firebase/firestore";
 import { addDays } from 'date-fns';
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "firebase/auth";
-import { createBookingCalendarEvent, deleteBookingCalendarEvent } from './services/calendar';
+import { 
+  createBookingCalendarEvent, 
+  deleteBookingCalendarEvent,
+  CalendarDisconnectedError 
+} from './services/calendar';
 
 interface AuthState {
   user: User | null;
@@ -406,22 +410,25 @@ export const useDataStore = create<DataState>((set, get) => ({
     const db = getFirestore(app);
     const bookingRef = collection(db, "bookings");
     
-    // Create booking in database first
+    // STEP 1: Always create booking in database first (this must succeed)
     const docRef = await addDoc(bookingRef, bookingData);
     let newBooking = { id: docRef.id, ...bookingData } as Booking;
     
-    // Try to create Google Calendar event
+    console.log('✅ Booking created in database:', docRef.id);
+    
+    // STEP 2: Try to create Google Calendar event (best-effort, non-blocking)
     try {
       const { trainers, eventTypes } = get();
       const trainer = trainers.find(t => t.id === bookingData.trainerId);
       const eventType = eventTypes.find(et => et.id === bookingData.eventTypeId);
       
-      // Only create calendar event if trainer has connected their Google Calendar
+      // Only attempt calendar event if trainer has connected Google Calendar
       if (trainer && trainer.email && eventType && trainer.googleCalendarConnected) {
         console.log('🗓️ Creating Google Calendar event...');
         console.log('📧 Trainer:', trainer.name, '|', trainer.email);
         console.log('👤 Student:', bookingData.studentName, '|', bookingData.studentEmail);
         console.log('🆔 Booking ID:', docRef.id);
+        
         if (trainer.zoomMeetingLink) {
           console.log('🎥 Zoom Link:', trainer.zoomMeetingLink);
         }
@@ -437,8 +444,8 @@ export const useDataStore = create<DataState>((set, get) => ({
           new Date(bookingData.endTime),
           trainer.zoomMeetingLink,
           bookingData.note,
-          bookingData.studentTimezone, // Truyền timezone của học viên
-          docRef.id // Truyền bookingId để tạo links
+          bookingData.studentTimezone,
+          docRef.id
         );
         
         // Update booking with calendar event ID
@@ -451,21 +458,56 @@ export const useDataStore = create<DataState>((set, get) => ({
           calendarEventId: eventId
         };
         
-        console.log('✅ Google Calendar event created and email sent to student');
+        console.log('✅ Google Calendar event created and invitation sent to student');
       } else {
         if (!trainer) {
-          console.log('⚠️ Skipping calendar event: trainer not found');
+          console.log('ℹ️ Skipping calendar event: trainer not found');
         } else if (!trainer.googleCalendarConnected) {
-          console.log('⚠️ Skipping calendar event: trainer has not connected Google Calendar');
+          console.log('ℹ️ Skipping calendar event: trainer has not connected Google Calendar');
         } else {
-          console.log('⚠️ Skipping calendar event: missing trainer or event type info');
+          console.log('ℹ️ Skipping calendar event: missing trainer or event type info');
         }
       }
     } catch (calendarError: any) {
-      console.error('❌ Failed to create calendar event:', calendarError);
-      console.error('Error details:', calendarError.message);
-      // Don't fail the booking if calendar creation fails
-      console.log('✅ Booking created without calendar event');
+      // Handle CalendarDisconnectedError - mark calendar as disconnected
+      if (calendarError instanceof CalendarDisconnectedError) {
+        console.error('⚠️ Calendar disconnected:', calendarError.message);
+        console.log('📝 Marking calendar as disconnected for trainer:', bookingData.trainerId);
+        
+        try {
+          // Update trainer profile to mark calendar as disconnected
+          const { setDoc } = await import("firebase/firestore");
+          const userRef = doc(db, 'users', bookingData.trainerId);
+          await setDoc(userRef, {
+            googleCalendarConnected: false,
+            calendarDisconnectedReason: calendarError.reason,
+            calendarDisconnectedAt: new Date().toISOString(),
+          }, { merge: true });
+          
+          // Also update trainers collection if exists
+          try {
+            const trainerRef = doc(db, 'trainers', bookingData.trainerId);
+            await setDoc(trainerRef, {
+              googleCalendarConnected: false,
+              calendarDisconnectedReason: calendarError.reason,
+              calendarDisconnectedAt: new Date().toISOString(),
+            }, { merge: true });
+          } catch (err) {
+            // Trainer doc might not exist, that's ok
+          }
+          
+          console.log('✅ Calendar marked as disconnected, trainer will need to reconnect');
+        } catch (updateError) {
+          console.error('❌ Failed to update disconnected status:', updateError);
+        }
+      } else {
+        // Other errors (network, etc.)
+        console.error('❌ Calendar event creation failed:', calendarError);
+        console.error('Error details:', calendarError.message);
+      }
+      
+      // IMPORTANT: Booking still succeeds even if calendar fails
+      console.log('✅ Booking created successfully (calendar event failed but booking is saved)');
     }
     
     set((state) => ({ bookings: [...state.bookings, newBooking] }));

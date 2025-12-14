@@ -7,6 +7,9 @@ export interface User {
   slug?: string;
   googleCalendarConnected?: boolean;
   googleCalendarEmail?: string;
+  googleRefreshToken?: string; // Only store refresh token, never access token
+  calendarDisconnectedReason?: 'invalid_grant' | 'revoked' | 'network_error';
+  calendarDisconnectedAt?: string; // ISO timestamp
   eventTypes?: string[];
   photoUrl?: string;
   zoomMeetingLink?: string;

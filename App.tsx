@@ -10,6 +10,7 @@ import { RescheduleBookingPage } from './pages/RescheduleBookingPage';
 import { TrainerDashboard } from './pages/TrainerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import { Login } from './pages/Login';
+import { OAuthCallback } from './pages/OAuthCallback';
 import { useAuthStore } from './store';
 import { Layout } from './components/ui/Layout';
 import { SimpleLayout } from './components/ui/SimpleLayout';
@@ -65,8 +66,19 @@ const App: React.FC = () => {
         
         <Route path="/login" element={<Layout><Login /></Layout>} />
         
+        {/* OAuth Callback Route - handles Google Calendar authorization */}
+        <Route path="/oauth/callback" element={<OAuthCallback />} />
+        
         <Route 
           path="/dashboard" 
+          element={
+            <ProtectedRoute allowedRoles={['trainer', 'admin', 'support']}>
+              <Layout><TrainerDashboard /></Layout>
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/trainer-dashboard" 
           element={
             <ProtectedRoute allowedRoles={['trainer', 'admin', 'support']}>
               <Layout><TrainerDashboard /></Layout>

@@ -37,8 +37,8 @@ import { AvailabilitySlot, Booking, BlockedSlot, ExternalBooking } from '../type
 import toast from 'react-hot-toast';
 import AvailabilityForm from '../components/AvailabilityForm';
 import { BlockedDaysManager } from '../components/BlockedDaysManager';
-import { authorizeTrainerCalendar, saveTrainerTokens } from '../services/calendar';
-import { getFirestore, doc, deleteDoc } from 'firebase/firestore';
+import { getGoogleAuthUrl, deleteTrainerCredentials, testCalendarConnection } from '../services/calendar';
+import { getFirestore, doc, updateDoc as firestoreUpdateDoc } from 'firebase/firestore';
 import app from '../services/firebase';
 
 export const TrainerDashboard = () => {
@@ -83,14 +83,15 @@ export const TrainerDashboard = () => {
       // Disconnect
       try {
         // Delete tokens from Firestore
-        const db = getFirestore(app);
-        const tokenDocRef = doc(db, 'userCredentials', user.id);
-        await deleteDoc(tokenDocRef);
+        await deleteTrainerCredentials(user.id);
         
         // Update user profile
         await updateUserProfile(user.id, { 
           googleCalendarConnected: false, 
-          googleCalendarEmail: undefined 
+          googleCalendarEmail: undefined,
+          googleRefreshToken: undefined,
+          calendarDisconnectedReason: undefined,
+          calendarDisconnectedAt: undefined,
         });
         
         toast.success("Disconnected from Google Calendar");
@@ -99,28 +100,25 @@ export const TrainerDashboard = () => {
         toast.error("Failed to disconnect Google Calendar");
       }
     } else {
-      // Connect
+      // Connect - redirect to Google OAuth
       try {
-        toast.loading("Opening Google authorization...", { id: 'google-auth' });
+        console.log('🔐 Starting Google Calendar OAuth flow...');
+        const authUrl = getGoogleAuthUrl();
+        console.log('🔗 Redirecting to:', authUrl);
         
-        // Start OAuth flow
-        const tokens = await authorizeTrainerCalendar();
-        
-        // Save tokens securely
-        await saveTrainerTokens(user.id, tokens);
-        
-        // Update user profile
-        await updateUserProfile(user.id, { 
-          googleCalendarConnected: true, 
-          googleCalendarEmail: tokens.email 
-        });
-        
-        toast.success("Connected to Google Calendar!", { id: 'google-auth' });
+        // Redirect to Google OAuth consent screen
+        // User will be redirected back to /oauth/callback after authorization
+        window.location.href = authUrl;
       } catch (error: any) {
-        console.error('Error connecting:', error);
-        toast.error(error.message || "Failed to connect Google Calendar", { id: 'google-auth' });
+        console.error('Error starting OAuth:', error);
+        toast.error(error.message || "Failed to start Google Calendar authorization");
       }
     }
+  };
+
+  const handleReconnectCalendar = () => {
+    // Same as connect
+    handleGoogleSync();
   };
 
   return (
