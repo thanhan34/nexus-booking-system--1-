@@ -13,7 +13,7 @@ import {
   getUserTimezone, 
   getTimezoneDisplayName, 
   isDifferentTimezone,
-  formatInTimezone,
+  formatSystemTimeInUserTimezone,
   SYSTEM_TIMEZONE
 } from '../utils/timezone';
 
@@ -155,7 +155,8 @@ export const BookingPage = () => {
         note: formData.note,
         startTime: selectedSlot.start.toISOString(),
         endTime: selectedSlot.end.toISOString(),
-        status: 'confirmed'
+        status: 'confirmed',
+        studentTimezone: userTimezone // Lưu timezone của học viên
       });
       navigate(`/success/${booking.id}`);
       toast.success("Booking confirmed!");
@@ -234,7 +235,7 @@ export const BookingPage = () => {
                     <div>
                       <div>{format(selectedSlot.start, 'EEEE, MMMM d')}</div>
                       <div className="mt-1">
-                        {formatInTimezone(selectedSlot.start, 'HH:mm', userTimezone)} - {formatInTimezone(selectedSlot.end, 'HH:mm', userTimezone)}
+                        {formatSystemTimeInUserTimezone(selectedSlot.start, 'HH:mm', userTimezone)} - {formatSystemTimeInUserTimezone(selectedSlot.end, 'HH:mm', userTimezone)}
                       </div>
                       {showDifferentTimezone && (
                         <div className="text-xs text-slate-500 mt-1">
@@ -278,7 +279,7 @@ export const BookingPage = () => {
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       {slots.map((slot, idx) => {
                         const isSelected = selectedSlot?.start.getTime() === slot.start.getTime();
-                        const displayTime = formatInTimezone(slot.start, 'HH:mm', userTimezone);
+                        const displayTime = formatSystemTimeInUserTimezone(slot.start, 'HH:mm', userTimezone);
                         return (
                           <button
                             key={idx}

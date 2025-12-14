@@ -5,6 +5,7 @@ import { Home } from './pages/Home';
 import { BookingPage } from './pages/BookingPage';
 import { TrainerBookingPage } from './pages/TrainerBookingPage';
 import { SuccessPage } from './pages/SuccessPage';
+import { StudentBookingsPage } from './pages/StudentBookingsPage';
 import { TrainerDashboard } from './pages/TrainerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import { Login } from './pages/Login';
@@ -55,6 +56,10 @@ const App: React.FC = () => {
         <Route path="/trainer/:slug" element={<SimpleLayout><TrainerBookingPage /></SimpleLayout>} />
         
         <Route path="/success/:bookingId" element={<SimpleLayout><SuccessPage /></SimpleLayout>} />
+        
+        {/* Student Bookings Management - Use SimpleLayout for students */}
+        <Route path="/my-bookings" element={<SimpleLayout><StudentBookingsPage /></SimpleLayout>} />
+        
         <Route path="/login" element={<Layout><Login /></Layout>} />
         
         <Route 

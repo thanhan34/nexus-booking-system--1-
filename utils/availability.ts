@@ -1,6 +1,8 @@
 
 import { User, EventType, Booking, GeneratedTimeSlot, BlockedSlot, ExternalBooking } from '../types';
 import { addMinutes, format, parse, isSameDay, isAfter, isBefore, setHours, setMinutes } from 'date-fns';
+import { toZonedTime, fromZonedTime } from 'date-fns-tz';
+import { SYSTEM_TIMEZONE } from './timezone';
 
 export const generateAvailableSlots = (
   date: Date,
@@ -64,8 +66,15 @@ export const generateAvailableSlots = (
       const endHour = parseInt(timeSlot.end.split(':')[0]);
       const endMinute = parseInt(timeSlot.end.split(':')[1]);
 
-      let currentSlotStart = setMinutes(setHours(date, startHour), startMinute);
-      const dayEnd = setMinutes(setHours(date, endHour), endMinute);
+      // Tạo slots trong SYSTEM_TIMEZONE (GMT+7), không phải local timezone
+      // Tạo date string trong system timezone
+      const dateStr = format(date, 'yyyy-MM-dd');
+      const startTimeStr = `${dateStr}T${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}:00`;
+      const endTimeStr = `${dateStr}T${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}:00`;
+      
+      // Convert từ system timezone sang UTC (để lưu trữ đúng)
+      let currentSlotStart = fromZonedTime(startTimeStr, SYSTEM_TIMEZONE);
+      const dayEnd = fromZonedTime(endTimeStr, SYSTEM_TIMEZONE);
 
       while (isBefore(addMinutes(currentSlotStart, eventType.durationMinutes), dayEnd) || 
              addMinutes(currentSlotStart, eventType.durationMinutes).getTime() === dayEnd.getTime()) {

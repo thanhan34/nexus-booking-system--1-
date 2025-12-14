@@ -405,13 +405,16 @@ export const createBookingCalendarEvent = async (
   startTime: Date,
   endTime: Date,
   zoomMeetingLink?: string,
-  note?: string
+  note?: string,
+  studentTimezone?: string,
+  bookingId?: string
 ): Promise<string> => {
   try {
     // Get trainer's valid access token
     const accessToken = await getValidTrainerToken(trainerId);
     
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // Use student's timezone if provided, otherwise fall back to system timezone
+    const timeZone = studentTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     // Extract main URL from Zoom invitation block for location field
     let zoomUrl = '';
@@ -420,11 +423,35 @@ export const createBookingCalendarEvent = async (
       zoomUrl = urlMatch ? urlMatch[0] : zoomMeetingLink;
     }
 
+    // Format times in both timezones for display
+    const vietnamTZ = 'Asia/Ho_Chi_Minh';
+    const dateFormatOptions: Intl.DateTimeFormatOptions = { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric', 
+      hour: '2-digit', 
+      minute: '2-digit',
+      timeZoneName: 'short'
+    };
+    
+    const vietnamTimeStr = startTime.toLocaleString('vi-VN', { ...dateFormatOptions, timeZone: vietnamTZ });
+    const studentTimeStr = studentTimezone ? startTime.toLocaleString('vi-VN', { ...dateFormatOptions, timeZone: studentTimezone }) : vietnamTimeStr;
+
     // Build professional Vietnamese description
     let description = `📚 ${eventTypeName}\n`;
     description += `👤 Học viên: ${studentName}\n`;
     description += `📧 Email: ${studentEmail}\n`;
-    description += `👨‍🏫 Giảng viên: ${trainerName}`;
+    description += `👨‍🏫 Giảng viên: ${trainerName}\n\n`;
+    
+    // Add time information in both timezones
+    description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    description += `⏰ THỜI GIAN HỌC\n`;
+    description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    description += `🇻🇳 Giờ Việt Nam: ${vietnamTimeStr}\n`;
+    if (studentTimezone && studentTimezone !== vietnamTZ) {
+      description += `🌍 Giờ địa phương của bạn: ${studentTimeStr}\n`;
+    }
     
     if (zoomMeetingLink) {
       description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
@@ -439,6 +466,20 @@ export const createBookingCalendarEvent = async (
       description += `📝 GHI CHÚ\n`;
       description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
       description += note;
+    }
+    
+    // Add cancel/reschedule links if bookingId is provided
+    if (bookingId) {
+      const baseUrl = window.location.origin || 'https://pte-intensive-booking.vercel.app';
+      const cancelUrl = `${baseUrl}/cancel-booking/${bookingId}`;
+      const rescheduleUrl = `${baseUrl}/reschedule-booking/${bookingId}`;
+      
+      description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      description += `📌 QUẢN LÝ LỊCH HỌC\n`;
+      description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      description += `🔗 Xem chi tiết booking: ${baseUrl}/my-bookings\n`;
+      description += `📅 Đổi lịch học: ${rescheduleUrl}\n`;
+      description += `❌ Hủy lịch học: ${cancelUrl}\n`;
     }
     
     description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;

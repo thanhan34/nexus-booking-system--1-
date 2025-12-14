@@ -421,6 +421,7 @@ export const useDataStore = create<DataState>((set, get) => ({
         console.log('🗓️ Creating Google Calendar event...');
         console.log('📧 Trainer:', trainer.name, '|', trainer.email);
         console.log('👤 Student:', bookingData.studentName, '|', bookingData.studentEmail);
+        console.log('🆔 Booking ID:', docRef.id);
         if (trainer.zoomMeetingLink) {
           console.log('🎥 Zoom Link:', trainer.zoomMeetingLink);
         }
@@ -435,7 +436,9 @@ export const useDataStore = create<DataState>((set, get) => ({
           new Date(bookingData.startTime),
           new Date(bookingData.endTime),
           trainer.zoomMeetingLink,
-          bookingData.note
+          bookingData.note,
+          bookingData.studentTimezone, // Truyền timezone của học viên
+          docRef.id // Truyền bookingId để tạo links
         );
         
         // Update booking with calendar event ID
@@ -497,10 +500,51 @@ export const useDataStore = create<DataState>((set, get) => ({
   updateBookingStatus: async (id, status) => {
     const db = getFirestore(app);
     const bookingRef = doc(db, "bookings", id);
+    
+    // If cancelling, try to delete Google Calendar event first
+    if (status === 'cancelled') {
+      const { trainers, bookings } = get();
+      const booking = bookings.find(b => b.id === id);
+      
+      if (booking && booking.calendarEventId) {
+        const trainer = trainers.find(t => t.id === booking.trainerId);
+        
+        if (trainer && trainer.googleCalendarConnected) {
+          try {
+            console.log('🗓️ Deleting Google Calendar event:', booking.calendarEventId);
+            await deleteBookingCalendarEvent(booking.trainerId, booking.calendarEventId);
+            console.log('✅ Calendar event deleted, email notification sent to student');
+          } catch (calendarError: any) {
+            // Don't fail the cancellation if calendar deletion fails
+            console.error('⚠️ Failed to delete calendar event:', calendarError);
+            console.log('📧 Manual notification may be required');
+            
+            // If calendar deletion fails (404 or other), still proceed with database update
+            if (calendarError.message && !calendarError.message.includes('404')) {
+              console.warn('⚠️ Calendar event deletion failed but continuing with cancellation');
+            }
+          }
+        } else {
+          console.log('ℹ️ No Google Calendar connected, skipping calendar event deletion');
+        }
+      } else {
+        console.log('ℹ️ No calendar event ID found for this booking');
+      }
+    }
+    
+    // Update booking status in database
     await updateDoc(bookingRef, { status });
+    console.log(`✅ Booking ${id} status updated to ${status} in database`);
+    
+    // Update local state immediately
     set((state) => ({
       bookings: state.bookings.map(b => b.id === id ? { ...b, status } : b)
     }));
+    
+    // Fetch fresh data to ensure sync across all views
+    console.log('🔄 Refreshing all booking data to sync status...');
+    await get().fetchData();
+    console.log('✅ All data refreshed - status should now be visible to all users');
   },
 
   addTrainer: async (userData) => {

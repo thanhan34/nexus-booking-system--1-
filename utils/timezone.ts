@@ -48,6 +48,21 @@ export const formatInTimezone = (date: Date, formatStr: string, timezone: string
 };
 
 /**
+ * Chuyển đổi và format thời gian từ system timezone sang user timezone
+ * Slots được tạo bằng fromZonedTime() nên đã là UTC dates
+ * @param date - Date object (UTC) được tạo từ system timezone
+ * @param formatStr - Format string (e.g., 'HH:mm')
+ * @param userTimezone - Múi giờ của user để hiển thị
+ * @returns String thời gian đã được chuyển đổi và format
+ */
+export const formatSystemTimeInUserTimezone = (date: Date, formatStr: string, userTimezone: string): string => {
+  // Slots được tạo bằng fromZonedTime(timeStr, SYSTEM_TIMEZONE)
+  // Nghĩa là date đã là UTC date object
+  // Ta chỉ cần format nó trong user timezone
+  return format(date, formatStr, { timeZone: userTimezone });
+};
+
+/**
  * Lấy offset giữa user timezone và system timezone (tính bằng giờ)
  * @param userTimezone - Múi giờ của học viên
  * @returns Số giờ chênh lệch (có thể âm hoặc dương)

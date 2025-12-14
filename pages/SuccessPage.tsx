@@ -1,7 +1,7 @@
 import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Card, Button } from '../components/ui/Common';
-import { CheckCircle, Calendar, Home } from 'lucide-react';
+import { CheckCircle, Calendar, Home, FileText } from 'lucide-react';
 import { useDataStore } from '../store';
 import { format } from 'date-fns';
 
@@ -46,12 +46,30 @@ export const SuccessPage = () => {
         </div>
       </Card>
 
-      <Link to="/">
-        <Button variant="outline">
-          <Home className="w-4 h-4 mr-2" />
-          Return Home
-        </Button>
-      </Link>
+      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+        <Link to="/my-bookings">
+          <Button style={{ backgroundColor: '#fc5d01' }} className="w-full sm:w-auto">
+            <FileText className="w-4 h-4 mr-2" />
+            Quản lý / Hủy lịch học
+          </Button>
+        </Link>
+        <Link to="/">
+          <Button variant="outline" className="w-full sm:w-auto">
+            <Home className="w-4 h-4 mr-2" />
+            Return Home
+          </Button>
+        </Link>
+      </div>
+      
+      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+        <p className="font-medium mb-1">📧 Email xác nhận đã được gửi</p>
+        <p className="text-blue-700">
+          Vui lòng kiểm tra email <strong>{booking.studentEmail}</strong> để xem chi tiết và link tham gia lớp học.
+        </p>
+        <p className="text-blue-700 mt-2">
+          💡 Để hủy lịch học, vui lòng truy cập trang "Quản lý / Hủy lịch học" ở trên.
+        </p>
+      </div>
     </div>
   );
 };
