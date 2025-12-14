@@ -57,10 +57,8 @@ const App: React.FC = () => {
         {/* New Flow: Trainer Specific Page via Slug - Use SimpleLayout for students */}
         <Route path="/trainer/:slug" element={<SimpleLayout><TrainerBookingPage /></SimpleLayout>} />
         
-        <Route path="/success/:bookingId" element={<SimpleLayout><SuccessPage /></SimpleLayout>} />
+        <Route path="/success/:bookingId" element={<SimpleLayout><SuccessPage /></SimpleLayout>} />       
         
-        {/* Student Bookings Management - Use SimpleLayout for students */}
-        <Route path="/my-bookings" element={<SimpleLayout><StudentBookingsPage /></SimpleLayout>} />
         
         {/* Cancel and Reschedule Booking Pages */}
         <Route path="/cancel-booking/:bookingId" element={<SimpleLayout><CancelBookingPage /></SimpleLayout>} />

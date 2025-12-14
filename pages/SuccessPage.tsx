@@ -46,13 +46,7 @@ export const SuccessPage = () => {
         </div>
       </Card>
 
-      <div className="flex flex-col sm:flex-row gap-3 justify-center">
-        <Link to="/my-bookings">
-          <Button style={{ backgroundColor: '#fc5d01' }} className="w-full sm:w-auto">
-            <FileText className="w-4 h-4 mr-2" />
-            Quản lý / Hủy lịch học
-          </Button>
-        </Link>
+      <div className="flex flex-col sm:flex-row gap-3 justify-center">      
         <Link to="/">
           <Button variant="outline" className="w-full sm:w-auto">
             <Home className="w-4 h-4 mr-2" />

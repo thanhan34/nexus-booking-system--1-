@@ -476,8 +476,7 @@ export const createBookingCalendarEvent = async (
       
       description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
       description += `📌 QUẢN LÝ LỊCH HỌC\n`;
-      description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      description += `🔗 Xem chi tiết booking: ${baseUrl}/my-bookings\n`;
+      description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;     
       description += `📅 Đổi lịch học: ${rescheduleUrl}\n`;
       description += `❌ Hủy lịch học: ${cancelUrl}\n`;
     }
