@@ -5,7 +5,6 @@ import { Home } from './pages/Home';
 import { BookingPage } from './pages/BookingPage';
 import { TrainerBookingPage } from './pages/TrainerBookingPage';
 import { SuccessPage } from './pages/SuccessPage';
-import { StudentBookingsPage } from './pages/StudentBookingsPage';
 import { CancelBookingPage } from './pages/CancelBookingPage';
 import { RescheduleBookingPage } from './pages/RescheduleBookingPage';
 import { TrainerDashboard } from './pages/TrainerDashboard';
