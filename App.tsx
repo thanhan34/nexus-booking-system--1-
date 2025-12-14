@@ -6,6 +6,8 @@ import { BookingPage } from './pages/BookingPage';
 import { TrainerBookingPage } from './pages/TrainerBookingPage';
 import { SuccessPage } from './pages/SuccessPage';
 import { StudentBookingsPage } from './pages/StudentBookingsPage';
+import { CancelBookingPage } from './pages/CancelBookingPage';
+import { RescheduleBookingPage } from './pages/RescheduleBookingPage';
 import { TrainerDashboard } from './pages/TrainerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import { Login } from './pages/Login';
@@ -59,6 +61,10 @@ const App: React.FC = () => {
         
         {/* Student Bookings Management - Use SimpleLayout for students */}
         <Route path="/my-bookings" element={<SimpleLayout><StudentBookingsPage /></SimpleLayout>} />
+        
+        {/* Cancel and Reschedule Booking Pages */}
+        <Route path="/cancel-booking/:bookingId" element={<SimpleLayout><CancelBookingPage /></SimpleLayout>} />
+        <Route path="/reschedule-booking/:bookingId" element={<SimpleLayout><RescheduleBookingPage /></SimpleLayout>} />
         
         <Route path="/login" element={<Layout><Login /></Layout>} />
         
