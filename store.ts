@@ -519,6 +519,12 @@ export const useDataStore = create<DataState>((set, get) => ({
     const bookingRef = collection(db, "bookings");
     const groupId = `grp_${Date.now()}`;
     const newBookings: Booking[] = [];
+    const { trainers, eventTypes } = get();
+    const trainer = trainers.find(t => t.id === bookingData.trainerId);
+    const eventType = eventTypes.find(et => et.id === bookingData.eventTypeId);
+    
+    let calendarErrorOccurred = false;
+    let calendarDisconnected = false;
 
     for (let i = 0; i < weeks; i++) {
       const currentStart = addDays(start, i * 7);
@@ -532,8 +538,110 @@ export const useDataStore = create<DataState>((set, get) => ({
         isRecurring: true,
         recurringGroupId: groupId
       };
+      
+      // STEP 1: Always create booking in database first (this must succeed)
       const docRef = await addDoc(bookingRef, booking);
-      newBookings.push({ id: docRef.id, ...booking } as Booking);
+      let newBooking = { id: docRef.id, ...booking } as Booking;
+      
+      console.log(`✅ Recurring booking ${i + 1}/${weeks} created in database:`, docRef.id);
+      
+      // STEP 2: Try to create Google Calendar event (best-effort, non-blocking)
+      // Only attempt if calendar hasn't been marked as disconnected and no errors yet
+      if (!calendarDisconnected && !calendarErrorOccurred && trainer && trainer.email && eventType && trainer.googleCalendarConnected) {
+        try {
+          console.log(`🗓️ Creating Google Calendar event ${i + 1}/${weeks}...`);
+          
+          const eventId = await createBookingCalendarEvent(
+            trainer.id,
+            trainer.email,
+            bookingData.studentEmail,
+            eventType.name,
+            trainer.name || 'Trainer',
+            bookingData.studentName,
+            currentStart,
+            currentEnd,
+            trainer.zoomMeetingLink,
+            bookingData.note,
+            bookingData.studentTimezone,
+            docRef.id
+          );
+          
+          // Update booking with calendar event ID
+          await updateDoc(docRef, {
+            calendarEventId: eventId
+          });
+          
+          newBooking = {
+            ...newBooking,
+            calendarEventId: eventId
+          };
+          
+          console.log(`✅ Google Calendar event ${i + 1}/${weeks} created successfully`);
+        } catch (calendarError: any) {
+          // Handle CalendarDisconnectedError - mark calendar as disconnected
+          if (calendarError instanceof CalendarDisconnectedError) {
+            console.error(`⚠️ Calendar disconnected at booking ${i + 1}/${weeks}:`, calendarError.message);
+            calendarDisconnected = true;
+            
+            // Mark calendar as disconnected in database (only once)
+            if (i === 0) {
+              try {
+                const { setDoc } = await import("firebase/firestore");
+                const userRef = doc(db, 'users', bookingData.trainerId);
+                await setDoc(userRef, {
+                  googleCalendarConnected: false,
+                  calendarDisconnectedReason: calendarError.reason,
+                  calendarDisconnectedAt: new Date().toISOString(),
+                }, { merge: true });
+                
+                // Also update trainers collection if exists
+                try {
+                  const trainerRef = doc(db, 'trainers', bookingData.trainerId);
+                  await setDoc(trainerRef, {
+                    googleCalendarConnected: false,
+                    calendarDisconnectedReason: calendarError.reason,
+                    calendarDisconnectedAt: new Date().toISOString(),
+                  }, { merge: true });
+                } catch (err) {
+                  // Trainer doc might not exist, that's ok
+                }
+                
+                console.log('✅ Calendar marked as disconnected, skipping remaining calendar events');
+              } catch (updateError) {
+                console.error('❌ Failed to update disconnected status:', updateError);
+              }
+            }
+          } else {
+            // Other errors (network, etc.)
+            console.error(`❌ Calendar event ${i + 1}/${weeks} creation failed:`, calendarError.message);
+            calendarErrorOccurred = true;
+          }
+          
+          // IMPORTANT: Booking still succeeds even if calendar fails
+          console.log(`✅ Recurring booking ${i + 1}/${weeks} saved (calendar event failed but booking is saved)`);
+        }
+      } else {
+        if (!trainer) {
+          console.log(`ℹ️ Skipping calendar event ${i + 1}/${weeks}: trainer not found`);
+        } else if (calendarDisconnected) {
+          console.log(`ℹ️ Skipping calendar event ${i + 1}/${weeks}: calendar already disconnected`);
+        } else if (calendarErrorOccurred) {
+          console.log(`ℹ️ Skipping calendar event ${i + 1}/${weeks}: previous calendar error occurred`);
+        } else if (!trainer.googleCalendarConnected) {
+          console.log(`ℹ️ Skipping calendar event ${i + 1}/${weeks}: trainer has not connected Google Calendar`);
+        } else {
+          console.log(`ℹ️ Skipping calendar event ${i + 1}/${weeks}: missing trainer or event type info`);
+        }
+      }
+      
+      newBookings.push(newBooking);
+    }
+    
+    console.log(`✅ All ${weeks} recurring bookings created successfully`);
+    if (calendarDisconnected) {
+      console.log('⚠️ Note: Calendar events were not created due to disconnected calendar');
+    } else if (calendarErrorOccurred) {
+      console.log('⚠️ Note: Some calendar events may not have been created due to errors');
     }
 
     set((state) => ({ bookings: [...state.bookings, ...newBookings] }));
