@@ -72,6 +72,7 @@ export const BookingPage = () => {
     note: ''
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Timezone handling
   const [userTimezone] = useState(getUserTimezone());
@@ -131,6 +132,13 @@ export const BookingPage = () => {
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Prevent double submission
+    if (isSubmitting) {
+      console.log('⚠️ [BOOKING] Preventing double submission');
+      return;
+    }
+    
     const result = bookingSchema.safeParse(formData);
     
     if (!result.success) {
@@ -145,6 +153,9 @@ export const BookingPage = () => {
     if (!selectedSlot || !eventType) return;
 
     try {
+      setIsSubmitting(true);
+      console.log('🚀 [BOOKING] Starting booking creation...');
+      
       const booking = await addBooking({
         eventTypeId: eventType.id,
         trainerId: selectedSlot.trainerId,
@@ -158,10 +169,14 @@ export const BookingPage = () => {
         status: 'confirmed',
         studentTimezone: userTimezone // Lưu timezone của học viên
       });
+      
+      console.log('✅ [BOOKING] Booking created successfully:', booking.id);
       navigate(`/success/${booking.id}`);
       toast.success("Booking confirmed!");
     } catch (error) {
+      console.error('❌ [BOOKING] Failed to create booking:', error);
       toast.error("Failed to create booking");
+      setIsSubmitting(false);
     }
   };
 
@@ -365,7 +380,9 @@ export const BookingPage = () => {
                 </div>
 
                 <div className="pt-4">
-                  <Button type="submit" className="w-full">Confirm Booking</Button>
+                  <Button type="submit" className="w-full" disabled={isSubmitting}>
+                    {isSubmitting ? 'Creating Booking...' : 'Confirm Booking'}
+                  </Button>
                 </div>
               </form>
             </div>
