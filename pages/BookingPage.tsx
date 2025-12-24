@@ -16,6 +16,7 @@ import {
   formatSystemTimeInUserTimezone,
   SYSTEM_TIMEZONE
 } from '../utils/timezone';
+import { sendBookingNotificationToDiscord } from '../services/discord';
 
 // Simple Calendar Component
 const MiniCalendar = ({ selectedDate, onSelectDate }: { selectedDate: Date, onSelectDate: (d: Date) => void }) => {
@@ -171,6 +172,21 @@ export const BookingPage = () => {
       });
       
       console.log('✅ [BOOKING] Booking created successfully:', booking.id);
+      
+      // Gửi thông báo Discord
+      const trainer = trainers.find(t => t.id === selectedSlot.trainerId);
+      if (trainer) {
+        console.log('📬 [DISCORD] Sending notification...');
+        sendBookingNotificationToDiscord({
+          booking,
+          eventType,
+          trainer
+        }).catch(err => {
+          console.error('❌ [DISCORD] Failed to send notification:', err);
+          // Không làm gián đoạn flow, chỉ log lỗi
+        });
+      }
+      
       navigate(`/success/${booking.id}`);
       toast.success("Booking confirmed!");
     } catch (error) {
