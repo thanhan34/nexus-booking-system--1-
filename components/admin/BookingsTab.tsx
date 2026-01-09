@@ -9,7 +9,7 @@ export const BookingsTab = () => {
   const { bookings, trainers, eventTypes, updateBookingStatus } = useDataStore();
   const [trainerFilter, setTrainerFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [timeFilter, setTimeFilter] = useState('all');
+  const [timeFilter, setTimeFilter] = useState('upcoming');
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredBookings = bookings.filter(b => {

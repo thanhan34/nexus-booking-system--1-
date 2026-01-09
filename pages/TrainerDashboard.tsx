@@ -54,7 +54,7 @@ export const TrainerDashboard = () => {
   if (!user) return null;
 
   const myBookings = bookings
-    .filter(b => b.trainerId === user.id)
+    .filter(b => b.trainerId === user.id && new Date(b.startTime) > new Date())
     .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
     
   const myBlockedSlots = blockedSlots.filter(b => b.trainerId === user.id);
