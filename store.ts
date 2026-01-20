@@ -31,6 +31,8 @@ interface DataState {
   addBooking: (booking: Omit<Booking, 'id' | 'createdAt'>) => Promise<Booking>;
   addRecurringBooking: (bookingData: any, start: Date, duration: number, weeks: number) => Promise<void>;
   updateBookingStatus: (id: string, status: 'confirmed' | 'cancelled') => Promise<void>;
+  updateRecurringBooking: (groupId: string, updateData: Partial<Booking>) => Promise<void>;
+  deleteRecurringBooking: (groupId: string) => Promise<void>;
   
   // Users/Trainers
   addTrainer: (userData: Partial<User>) => Promise<void>;
@@ -817,5 +819,192 @@ export const useDataStore = create<DataState>((set, get) => ({
     set((state) => ({
       blockedSlots: state.blockedSlots.filter(b => !(b.trainerId === trainerId && b.date === date))
     }));
+  },
+
+  updateRecurringBooking: async (groupId: string, updateData: Partial<Booking>) => {
+    const db = getFirestore(app);
+    const { trainers, bookings, eventTypes } = get();
+    const { updateCalendarEvent } = await import('./services/calendar');
+    
+    // Find all bookings in this recurring group
+    const groupBookings = bookings.filter(b => b.recurringGroupId === groupId);
+    
+    if (groupBookings.length === 0) {
+      throw new Error('No bookings found for this recurring group');
+    }
+    
+    console.log(`📝 Updating ${groupBookings.length} recurring bookings in group:`, groupId);
+    
+    const trainer = trainers.find(t => t.id === groupBookings[0].trainerId);
+    const eventType = eventTypes.find(et => et.id === groupBookings[0].eventTypeId);
+    
+    let calendarErrorOccurred = false;
+    let calendarDisconnected = false;
+    
+    // Update each booking in the group
+    for (let i = 0; i < groupBookings.length; i++) {
+      const booking = groupBookings[i];
+      const bookingRef = doc(db, "bookings", booking.id);
+      
+      try {
+        // Update booking in database
+        await updateDoc(bookingRef, updateData);
+        console.log(`✅ Booking ${i + 1}/${groupBookings.length} updated in database:`, booking.id);
+        
+        // Try to update Google Calendar event if it exists
+        if (!calendarDisconnected && !calendarErrorOccurred && booking.calendarEventId && trainer?.googleCalendarConnected) {
+          try {
+            console.log(`🗓️ Updating Google Calendar event ${i + 1}/${groupBookings.length}...`);
+            
+            const calendarUpdate: any = {};
+            
+            // Update summary if student name changed
+            if (updateData.studentName && eventType) {
+              calendarUpdate.summary = `${eventType.name} - ${updateData.studentName}`;
+            }
+            
+            // Update description if note changed
+            if (updateData.note !== undefined) {
+              // Rebuild description with updated note
+              const vietnamTZ = 'Asia/Ho_Chi_Minh';
+              const startTime = new Date(booking.startTime);
+              const dateFormatOptions: Intl.DateTimeFormatOptions = { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit',
+                timeZoneName: 'short'
+              };
+              
+              const vietnamTimeStr = startTime.toLocaleString('vi-VN', { ...dateFormatOptions, timeZone: vietnamTZ });
+              
+              let description = `📚 ${eventType?.name || 'Session'}\n`;
+              description += `👤 Học viên: ${updateData.studentName || booking.studentName}\n`;
+              description += `📧 Email: ${updateData.studentEmail || booking.studentEmail}\n`;
+              description += `👨‍🏫 Giảng viên: ${trainer?.name || 'Trainer'}\n\n`;
+              
+              description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+              description += `⏰ THỜI GIAN HỌC\n`;
+              description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+              description += `🇻🇳 Giờ Việt Nam: ${vietnamTimeStr}\n`;
+              
+              if (trainer?.zoomMeetingLink) {
+                description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+                description += `🎥 THÔNG TIN THAM GIA ZOOM\n`;
+                description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+                description += trainer.zoomMeetingLink;
+                description += `\n\n💡 Lưu ý: Vui lòng tham gia đúng giờ để không bỏ lỡ buổi học.`;
+              }
+              
+              if (updateData.note) {
+                description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+                description += `📝 GHI CHÚ\n`;
+                description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+                description += updateData.note;
+              }
+              
+              const baseUrl = window.location.origin || 'https://pte-intensive-booking.vercel.app';
+              const cancelUrl = `${baseUrl}/cancel-booking/${booking.id}`;
+              const rescheduleUrl = `${baseUrl}/reschedule-booking/${booking.id}`;
+              
+              description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+              description += `📌 QUẢN LÝ LỊCH HỌC\n`;
+              description += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;     
+              description += `📅 Đổi lịch học: ${rescheduleUrl}\n`;
+              description += `❌ Hủy lịch học: ${cancelUrl}\n`;
+              
+              description += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+              description += `Nếu có bất kỳ thắc mắc nào, vui lòng liên hệ giảng viên qua email: ${trainer?.email}`;
+              
+              calendarUpdate.description = description;
+            }
+            
+            // Update attendees if email changed
+            if (updateData.studentEmail) {
+              calendarUpdate.attendees = [
+                { email: updateData.studentEmail, displayName: updateData.studentName || booking.studentName }
+              ];
+            }
+            
+            await updateCalendarEvent(booking.trainerId, booking.calendarEventId, calendarUpdate);
+            console.log(`✅ Google Calendar event ${i + 1}/${groupBookings.length} updated successfully`);
+          } catch (calendarError: any) {
+            if (calendarError instanceof CalendarDisconnectedError) {
+              console.error(`⚠️ Calendar disconnected at booking ${i + 1}/${groupBookings.length}:`, calendarError.message);
+              calendarDisconnected = true;
+            } else {
+              console.error(`❌ Calendar event ${i + 1}/${groupBookings.length} update failed:`, calendarError.message);
+              calendarErrorOccurred = true;
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`❌ Failed to update booking ${i + 1}/${groupBookings.length}:`, error);
+        throw error;
+      }
+    }
+    
+    console.log(`✅ All ${groupBookings.length} recurring bookings updated successfully`);
+    
+    // Refresh data to sync state
+    await get().fetchData();
+  },
+
+  deleteRecurringBooking: async (groupId: string) => {
+    const db = getFirestore(app);
+    const { trainers, bookings } = get();
+    
+    // Find all bookings in this recurring group
+    const groupBookings = bookings.filter(b => b.recurringGroupId === groupId);
+    
+    if (groupBookings.length === 0) {
+      throw new Error('No bookings found for this recurring group');
+    }
+    
+    console.log(`🗑️ Deleting ${groupBookings.length} recurring bookings in group:`, groupId);
+    
+    const trainer = trainers.find(t => t.id === groupBookings[0].trainerId);
+    
+    let calendarErrorOccurred = false;
+    let calendarDisconnected = false;
+    
+    // Delete each booking in the group
+    for (let i = 0; i < groupBookings.length; i++) {
+      const booking = groupBookings[i];
+      
+      try {
+        // Try to delete Google Calendar event first
+        if (!calendarDisconnected && !calendarErrorOccurred && booking.calendarEventId && trainer?.googleCalendarConnected) {
+          try {
+            console.log(`🗓️ Deleting Google Calendar event ${i + 1}/${groupBookings.length}...`);
+            await deleteBookingCalendarEvent(booking.trainerId, booking.calendarEventId);
+            console.log(`✅ Google Calendar event ${i + 1}/${groupBookings.length} deleted successfully`);
+          } catch (calendarError: any) {
+            if (calendarError instanceof CalendarDisconnectedError) {
+              console.error(`⚠️ Calendar disconnected at booking ${i + 1}/${groupBookings.length}:`, calendarError.message);
+              calendarDisconnected = true;
+            } else {
+              console.error(`❌ Calendar event ${i + 1}/${groupBookings.length} deletion failed:`, calendarError.message);
+              calendarErrorOccurred = true;
+            }
+          }
+        }
+        
+        // Delete booking from database
+        const bookingRef = doc(db, "bookings", booking.id);
+        await deleteDoc(bookingRef);
+        console.log(`✅ Booking ${i + 1}/${groupBookings.length} deleted from database:`, booking.id);
+      } catch (error) {
+        console.error(`❌ Failed to delete booking ${i + 1}/${groupBookings.length}:`, error);
+        throw error;
+      }
+    }
+    
+    console.log(`✅ All ${groupBookings.length} recurring bookings deleted successfully`);
+    
+    // Refresh data to sync state
+    await get().fetchData();
   }
 }));
