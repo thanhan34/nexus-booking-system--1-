@@ -47,9 +47,13 @@ export const Login = () => {
       const currentUser = useAuthStore.getState().user;
       console.log('📊 [LOGIN] Current user from store:', currentUser);
       
-      if (currentUser?.role === 'admin' || currentUser?.role?.toLowerCase() === 'admin') {
+      const normalizedRole = currentUser?.role?.toLowerCase();
+      if (normalizedRole === 'admin') {
         console.log('➡️ [LOGIN] Navigating to /admin dashboard');
         navigate('/admin');
+      } else if (normalizedRole === 'support') {
+        console.log('➡️ [LOGIN] Navigating to /support dashboard');
+        navigate('/support');
       } else {
         console.log('➡️ [LOGIN] Navigating to /dashboard, role:', currentUser?.role);
         navigate('/dashboard');
@@ -115,9 +119,13 @@ export const Login = () => {
           const currentUser = useAuthStore.getState().user;
           console.log('📊 [LOGIN] Current user from store:', currentUser);
           
-          if (currentUser?.role === 'admin') {
+          const normalizedRole = currentUser?.role?.toLowerCase();
+          if (normalizedRole === 'admin') {
             console.log('➡️ [LOGIN] Navigating to /admin dashboard');
             navigate('/admin');
+          } else if (normalizedRole === 'support') {
+            console.log('➡️ [LOGIN] Navigating to /support dashboard');
+            navigate('/support');
           } else {
             console.log('➡️ [LOGIN] Navigating to /dashboard, role:', currentUser?.role);
             navigate('/dashboard');
@@ -175,7 +183,7 @@ export const Login = () => {
           
           <div className="mt-6 text-center">
             <p className="text-sm text-slate-500">
-              Trainers and administrators only
+              Trainers, support, and administrators only
             </p>
           </div>
         </Card>

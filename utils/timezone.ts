@@ -1,4 +1,4 @@
-import { format, toZonedTime, fromZonedTime } from 'date-fns-tz';
+import { format, toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 
 // Múi giờ chuẩn của hệ thống (Vietnam)
 export const SYSTEM_TIMEZONE = 'Asia/Ho_Chi_Minh'; // GMT+7
@@ -59,7 +59,7 @@ export const formatSystemTimeInUserTimezone = (date: Date, formatStr: string, us
   // Slots được tạo bằng fromZonedTime(timeStr, SYSTEM_TIMEZONE)
   // Nghĩa là date đã là UTC date object
   // Ta chỉ cần format nó trong user timezone
-  return format(date, formatStr, { timeZone: userTimezone });
+  return formatInTimeZone(date, userTimezone, formatStr);
 };
 
 /**
@@ -105,4 +105,45 @@ export const getTimezoneDisplayName = (timezone: string): string => {
  */
 export const isDifferentTimezone = (userTimezone: string): boolean => {
   return userTimezone !== SYSTEM_TIMEZONE;
+};
+
+const fallbackTimezones = [
+  'UTC',
+  'Asia/Ho_Chi_Minh',
+  'Asia/Singapore',
+  'Asia/Tokyo',
+  'Asia/Seoul',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'Australia/Sydney'
+];
+
+/**
+ * Lấy danh sách timezone dạng IANA cho dropdown
+ * @returns danh sách timezone đã sắp xếp
+ */
+export const getTimezones = (): string[] => {
+  const supported = typeof Intl !== 'undefined' && (Intl as any).supportedValuesOf;
+  if (supported) {
+    return (Intl as any).supportedValuesOf('timeZone') as string[];
+  }
+
+  return fallbackTimezones;
+};
+
+/**
+ * Tạo nhãn hiển thị cho timezone (kèm GMT offset)
+ */
+export const getTimezoneOptionLabel = (timezone: string): string => {
+  const displayName = getTimezoneDisplayName(timezone);
+  if (displayName === timezone) {
+    return timezone;
+  }
+
+  return `${timezone} (${displayName})`;
 };

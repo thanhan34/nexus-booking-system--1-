@@ -9,6 +9,7 @@ import { CancelBookingPage } from './pages/CancelBookingPage';
 import { RescheduleBookingPage } from './pages/RescheduleBookingPage';
 import { TrainerDashboard } from './pages/TrainerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import SupportDashboard from './pages/SupportDashboard';
 import { Login } from './pages/Login';
 import { OAuthCallback } from './pages/OAuthCallback';
 import { useAuthStore } from './store';
@@ -72,7 +73,7 @@ const App: React.FC = () => {
         <Route 
           path="/dashboard" 
           element={
-            <ProtectedRoute allowedRoles={['trainer', 'admin', 'support']}>
+            <ProtectedRoute allowedRoles={['trainer', 'admin']}>
               <Layout><TrainerDashboard /></Layout>
             </ProtectedRoute>
           } 
@@ -80,7 +81,7 @@ const App: React.FC = () => {
         <Route 
           path="/trainer-dashboard" 
           element={
-            <ProtectedRoute allowedRoles={['trainer', 'admin', 'support']}>
+            <ProtectedRoute allowedRoles={['trainer', 'admin']}>
               <Layout><TrainerDashboard /></Layout>
             </ProtectedRoute>
           } 
@@ -89,10 +90,19 @@ const App: React.FC = () => {
         <Route 
           path="/admin" 
           element={
-            <ProtectedRoute allowedRoles={['admin', 'support']}>
+            <ProtectedRoute allowedRoles={['admin']}>
               <Layout><AdminDashboard /></Layout>
             </ProtectedRoute>
           } 
+        />
+
+        <Route
+          path="/support"
+          element={
+            <ProtectedRoute allowedRoles={['support']}>
+              <Layout><SupportDashboard /></Layout>
+            </ProtectedRoute>
+          }
         />
       </Routes>
     </BrowserRouter>
