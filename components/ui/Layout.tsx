@@ -54,6 +54,14 @@ export const Layout = ({ children }: { children?: React.ReactNode }) => {
                     Admin
                   </Link>
                 )}
+                {user.role === 'support' && (
+                  <Link
+                    to="/support"
+                    className="px-4 py-2 text-sm font-semibold rounded-lg text-slate-700 hover:bg-accent hover:text-white transition-all duration-200 hover:shadow-md"
+                  >
+                    Support
+                  </Link>
+                )}
                 {(user.role === 'trainer' || user.role === 'admin') && (
                   <Link 
                     to="/dashboard" 
@@ -114,6 +122,15 @@ export const Layout = ({ children }: { children?: React.ReactNode }) => {
                     className="px-4 py-2.5 text-sm font-semibold rounded-lg text-slate-700 hover:bg-accent hover:text-white transition-all"
                   >
                     Admin
+                  </Link>
+                )}
+                {user.role === 'support' && (
+                  <Link
+                    to="/support"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="px-4 py-2.5 text-sm font-semibold rounded-lg text-slate-700 hover:bg-accent hover:text-white transition-all"
+                  >
+                    Support
                   </Link>
                 )}
                 {(user.role === 'trainer' || user.role === 'admin') && (

@@ -12,6 +12,7 @@ const SupportDashboard = () => {
   const navigate = useNavigate();
   const { user: currentUser } = useAuthStore();
   const { trainers, bookings, blockedSlots, externalBookings, eventTypes, fetchData } = useDataStore();
+  const supportAdmin = trainers.find(trainer => trainer.email === 'dtan42@gmail.com');
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async authUser => {
@@ -78,7 +79,7 @@ const SupportDashboard = () => {
           blockedSlots={blockedSlots}
           externalBookings={externalBookings}
           eventTypes={eventTypes}
-          adminId={currentUser?.id}
+          adminId={supportAdmin?.id}
           isSupportOnly
         />
       </div>

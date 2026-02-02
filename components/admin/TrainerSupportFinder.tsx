@@ -6,6 +6,9 @@ import { Button, Card, Select } from '../ui/Common';
 import { generateAvailableSlots } from '../../utils/availability';
 import { SYSTEM_TIMEZONE } from '../../utils/timezone';
 import { createCalendarEvent } from '../../services/calendar';
+import { doc, getFirestore, updateDoc } from 'firebase/firestore';
+import app from '../../services/firebase';
+import { useDataStore } from '../../store';
 import toast from 'react-hot-toast';
 import { SupportSlot } from './TrainerSupportTypes';
 import { TrainerSupportDialog } from './TrainerSupportDialog';
@@ -38,11 +41,12 @@ export const TrainerSupportFinder = ({
   const [trainerFilter, setTrainerFilter] = useState('all');
   const [selectedSlot, setSelectedSlot] = useState<SupportSlot | null>(null);
   const [saving, setSaving] = useState(false);
+  const { fetchData } = useDataStore();
 
   const next7Days = useMemo(() => Array.from({ length: WEEK_DAYS }, (_, i) => addDays(selectedDate, i)), [selectedDate]);
 
   const adminBookings = useMemo(() => (
-    bookings.filter(b => b.trainerId === adminId && b.status === 'confirmed')
+    bookings.filter(b => b.trainerId === adminId && b.status === 'confirmed' && !b.supportTrainerId)
   ), [bookings, adminId]);
 
   const adminUser = useMemo(() => (
@@ -174,6 +178,15 @@ export const TrainerSupportFinder = ({
           ]
         }
       });
+
+      const db = getFirestore(app);
+      await updateDoc(doc(db, 'bookings', selectedSlot.booking.id), {
+        supportTrainerId: selectedSlot.trainer.id,
+        supportTrainerEmail: selectedSlot.trainer.email,
+        supportAssignedAt: new Date().toISOString()
+      });
+
+      await fetchData();
 
       toast.success('Đã thêm event vào Google Calendar của trainer');
       setSelectedSlot(null);

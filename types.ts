@@ -62,6 +62,9 @@ export interface Booking {
   studentCode?: string;
   note?: string;
   status: string;
+  supportTrainerId?: string;
+  supportTrainerEmail?: string;
+  supportAssignedAt?: string;
   studentTimezone?: string; // Timezone của học viên để tạo calendar event đúng
   isRecurring?: boolean;
   calendarEventId?: string; // Google Calendar event ID (on trainer's calendar with student as attendee)
