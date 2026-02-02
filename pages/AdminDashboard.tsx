@@ -18,7 +18,7 @@ const AdminDashboard = () => {
   const [refreshing, setRefreshing] = useState(false);
   const navigate = useNavigate();
   const { user: currentUser } = useAuthStore();
-  const { trainers, bookings, blockedSlots, externalBookings, fetchData } = useDataStore();
+  const { trainers, bookings, blockedSlots, externalBookings, eventTypes, fetchData } = useDataStore();
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async authUser => {
@@ -350,6 +350,7 @@ const AdminDashboard = () => {
                   bookings={bookings}
                   blockedSlots={blockedSlots}
                   externalBookings={externalBookings}
+                  eventTypes={eventTypes}
                 />
               </div>
             )}

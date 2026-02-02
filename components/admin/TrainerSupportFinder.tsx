@@ -1,9 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import { addDays, format, isSameDay, parseISO, startOfToday } from 'date-fns';
-import { Phone, Mail, Users } from 'lucide-react';
-import { Booking, BlockedSlot, ExternalBooking, User } from '../../types';
-import { Button, Card, Select, Badge } from '../ui/Common';
+import { Users } from 'lucide-react';
+import { Booking, BlockedSlot, ExternalBooking, EventType, User } from '../../types';
+import { Button, Card, Select } from '../ui/Common';
 import { generateAvailableSlots } from '../../utils/availability';
+import { SYSTEM_TIMEZONE } from '../../utils/timezone';
+import { createCalendarEvent } from '../../services/calendar';
+import toast from 'react-hot-toast';
+import { SupportSlot } from './TrainerSupportTypes';
+import { TrainerSupportDialog } from './TrainerSupportDialog';
+import { TrainerSupportGrid } from './TrainerSupportGrid';
 
 interface TrainerSupportFinderProps {
   adminId: string;
@@ -11,6 +17,7 @@ interface TrainerSupportFinderProps {
   bookings: Booking[];
   blockedSlots: BlockedSlot[];
   externalBookings: ExternalBooking[];
+  eventTypes: EventType[];
 }
 
 const WEEK_DAYS = 7;
@@ -24,10 +31,13 @@ export const TrainerSupportFinder = ({
   trainers,
   bookings,
   blockedSlots,
-  externalBookings
+  externalBookings,
+  eventTypes
 }: TrainerSupportFinderProps) => {
   const [selectedDate, setSelectedDate] = useState(startOfToday());
   const [trainerFilter, setTrainerFilter] = useState('all');
+  const [selectedSlot, setSelectedSlot] = useState<SupportSlot | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const next7Days = useMemo(() => Array.from({ length: WEEK_DAYS }, (_, i) => addDays(selectedDate, i)), [selectedDate]);
 
@@ -35,16 +45,16 @@ export const TrainerSupportFinder = ({
     bookings.filter(b => b.trainerId === adminId && b.status === 'confirmed')
   ), [bookings, adminId]);
 
-  const adminExternal = useMemo(() => (
-    externalBookings.filter(ex => ex.trainerId === adminId)
-  ), [externalBookings, adminId]);
+  const adminUser = useMemo(() => (
+    trainers.find(t => t.id === adminId)
+  ), [trainers, adminId]);
 
   const visibleTrainers = trainerFilter === 'all'
     ? trainers.filter(t => t.id !== adminId)
     : trainers.filter(t => t.id === trainerFilter && t.id !== adminId);
 
   const freeSlotMap = useMemo(() => {
-    const map: Record<string, Record<string, string[]>> = {};
+    const map: Record<string, Record<string, SupportSlot[]>> = {};
     const adminBookingsByDay = next7Days.reduce<Record<string, Booking[]>>((acc, day) => {
       const key = format(day, 'yyyy-MM-dd');
       acc[key] = adminBookings.filter(b => isSameDay(parseISO(b.startTime), day));
@@ -67,7 +77,7 @@ export const TrainerSupportFinder = ({
           return;
         }
 
-        const daySlots: string[] = [];
+        const daySlots: SupportSlot[] = [];
 
         adminDayBookings.forEach(booking => {
           if (!booking.eventTypeId) {
@@ -95,11 +105,17 @@ export const TrainerSupportFinder = ({
           const bookingStart = parseISO(booking.startTime).getTime();
           const matchingSlot = availableSlots.find(slot => slot.start.getTime() === bookingStart);
           if (matchingSlot) {
-            daySlots.push(format(matchingSlot.start, 'HH:mm'));
+            daySlots.push({
+              trainer,
+              booking,
+              start: parseISO(booking.startTime),
+              end: parseISO(booking.endTime),
+              timeLabel: format(matchingSlot.start, 'HH:mm')
+            });
           }
         });
 
-        map[trainer.id][dayKey] = Array.from(new Set(daySlots));
+        map[trainer.id][dayKey] = daySlots;
       });
     });
 
@@ -111,9 +127,63 @@ export const TrainerSupportFinder = ({
     externalBookings,
     blockedSlots,
     adminBookings,
-    adminExternal,
     adminId
   ]);
+
+  const handleCreateEvent = async () => {
+    if (!selectedSlot) {
+      return;
+    }
+
+    if (!selectedSlot.trainer.googleCalendarConnected) {
+      toast.error('Trainer chưa kết nối Google Calendar');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const eventTypeName = eventTypes.find(et => et.id === selectedSlot.booking.eventTypeId)?.name || 'Admin Session';
+      const adminName = adminUser?.name || 'Admin';
+      const adminEmail = adminUser?.email;
+
+      const descriptionLines = [
+        `Hỗ trợ admin: ${adminName}`,
+        adminEmail ? `Email admin: ${adminEmail}` : undefined,
+        `Mã booking admin: ${selectedSlot.booking.id}`,
+        `Loại buổi học: ${eventTypeName}`,
+        `Thời gian: ${format(selectedSlot.start, 'yyyy-MM-dd HH:mm')} - ${format(selectedSlot.end, 'HH:mm')}`
+      ].filter(Boolean);
+
+      await createCalendarEvent(selectedSlot.trainer.id, {
+        summary: `Support Session - ${adminName}`,
+        description: descriptionLines.join('\n'),
+        start: {
+          dateTime: selectedSlot.start.toISOString(),
+          timeZone: SYSTEM_TIMEZONE
+        },
+        end: {
+          dateTime: selectedSlot.end.toISOString(),
+          timeZone: SYSTEM_TIMEZONE
+        },
+        attendees: adminEmail ? [{ email: adminEmail, displayName: adminName }] : undefined,
+        reminders: {
+          useDefault: false,
+          overrides: [
+            { method: 'email', minutes: 60 },
+            { method: 'popup', minutes: 30 }
+          ]
+        }
+      });
+
+      toast.success('Đã thêm event vào Google Calendar của trainer');
+      setSelectedSlot(null);
+    } catch (error: any) {
+      console.error('❌ Failed to create support event:', error);
+      toast.error(error.message || 'Không thể tạo event Google Calendar');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -167,72 +237,20 @@ export const TrainerSupportFinder = ({
         </div>
       </Card>
 
-      <Card className="overflow-hidden">
-        <div className="grid grid-cols-[200px_repeat(7,1fr)] border-b" style={{ backgroundColor: '#fedac2' }}>
-          <div className="p-3 font-semibold border-r" style={{ color: '#fc5d01' }}>Trainer</div>
-          {next7Days.map(day => (
-            <div
-              key={day.toString()}
-              className={`p-3 text-center border-r font-medium ${
-                isSameDay(day, new Date())
-                  ? 'bg-blue-50 text-blue-700 border-2 border-blue-300'
-                  : ''
-              }`}
-            >
-              <div className="font-bold">{format(day, 'EEE')}</div>
-              <div className="text-xs text-slate-500">{format(day, 'MMM d')}</div>
-            </div>
-          ))}
-        </div>
-        {visibleTrainers.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">No trainers available.</div>
-        ) : (
-          visibleTrainers.map(trainer => (
-            <div key={trainer.id} className="grid grid-cols-[200px_repeat(7,1fr)] border-b last:border-0">
-              <div className="p-3 border-r">
-                <div className="font-medium text-sm" style={{ color: '#fc5d01' }}>{trainer.name}</div>
-                <div className="text-xs text-slate-500">{trainer.email}</div>
-                <div className="flex gap-2 mt-2">
-                  <Badge className="text-[10px] px-2 py-0.5" style={{ backgroundColor: '#fedac2', color: '#fc5d01' }}>
-                    Support
-                  </Badge>
-                  <div className="flex items-center gap-1 text-[10px] text-slate-500">
-                    <Phone className="w-3 h-3" />
-                    <span>Call</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-[10px] text-slate-500">
-                    <Mail className="w-3 h-3" />
-                    <span>Email</span>
-                  </div>
-                </div>
-              </div>
-              {next7Days.map(day => {
-                const dayKey = format(day, 'yyyy-MM-dd');
-                const slots = freeSlotMap[trainer.id]?.[dayKey] || [];
-                return (
-                  <div key={dayKey} className="p-2 border-r min-h-[100px] text-xs">
-                    {slots.length === 0 ? (
-                      <div className="text-slate-400 italic">No overlap</div>
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        {slots.map(slot => (
-                          <span
-                            key={`${trainer.id}-${dayKey}-${slot}`}
-                            className="px-2 py-1 rounded-full text-[10px] font-semibold"
-                            style={{ backgroundColor: '#ffac7b', color: '#ffffff' }}
-                          >
-                            {slot}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))
-        )}
-      </Card>
+      <TrainerSupportGrid
+        next7Days={next7Days}
+        trainers={visibleTrainers}
+        slotsByTrainer={freeSlotMap}
+        onSlotSelect={setSelectedSlot}
+      />
+
+      <TrainerSupportDialog
+        slot={selectedSlot}
+        adminUser={adminUser}
+        saving={saving}
+        onClose={() => setSelectedSlot(null)}
+        onConfirm={handleCreateEvent}
+      />
     </div>
   );
 };
