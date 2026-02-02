@@ -3,6 +3,7 @@ import { fetchUsers, updateUserRole, auth } from '../services/firebase';
 import { useNavigate } from 'react-router-dom';
 import { useDataStore, useAuthStore } from '../store';
 import { MasterScheduleView } from '../components/admin/MasterScheduleView';
+import { TrainerSupportFinder } from '../components/admin/TrainerSupportFinder';
 import { BookingsTab } from '../components/admin/BookingsTab';
 import { StudentsView } from '../components/admin/StudentsView';
 import { EventTypesTab } from '../components/admin/EventTypesTab';
@@ -330,14 +331,28 @@ const AdminDashboard = () => {
         )}
 
         {activeTab === 'schedule' && (
-          <div className="animate-in fade-in duration-500">
-            <h2 className="text-2xl font-bold text-slate-800 mb-6">Trainer Schedules</h2>
-            <MasterScheduleView 
-              trainers={trainers}
-              bookings={bookings}
-              blockedSlots={blockedSlots}
-              externalBookings={externalBookings}
-            />
+          <div className="space-y-8 animate-in fade-in duration-500">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-800 mb-6">Trainer Schedules</h2>
+              <MasterScheduleView
+                trainers={trainers}
+                bookings={bookings}
+                blockedSlots={blockedSlots}
+                externalBookings={externalBookings}
+              />
+            </div>
+            {currentUser?.id && (
+              <div>
+                <h2 className="text-2xl font-bold text-slate-800 mb-6">Trainer Support Availability</h2>
+                <TrainerSupportFinder
+                  adminId={currentUser.id}
+                  trainers={trainers}
+                  bookings={bookings}
+                  blockedSlots={blockedSlots}
+                  externalBookings={externalBookings}
+                />
+              </div>
+            )}
           </div>
         )}
 
