@@ -13,9 +13,24 @@ export const Home = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
-      <div className="text-center space-y-2">
+      <div className="text-center space-y-3">
+        <Badge className="mx-auto w-fit bg-[#fedac2] text-[#fc5d01]">PTE Intensive Booking</Badge>
         <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl">Book a Session</h1>
         <p className="text-lg text-slate-600">Select a learning activity to get started.</p>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-sm font-medium text-[#fc5d01]">
+          <Link
+            to="/privacy-policy"
+            className="rounded-full border border-[#fdbc94] bg-[#fedac2] px-4 py-2 transition-colors hover:text-[#fd7f33]"
+          >
+            Privacy Policy
+          </Link>
+          <Link
+            to="/terms-of-service"
+            className="rounded-full border border-[#fdbc94] bg-[#fedac2] px-4 py-2 transition-colors hover:text-[#fd7f33]"
+          >
+            Terms of Service
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
