@@ -12,6 +12,8 @@ import AdminDashboard from './pages/AdminDashboard';
 import SupportDashboard from './pages/SupportDashboard';
 import { Login } from './pages/Login';
 import { OAuthCallback } from './pages/OAuthCallback';
+import { PrivacyPolicy } from './pages/PrivacyPolicy';
+import { TermsOfService } from './pages/TermsOfService';
 import { useAuthStore } from './store';
 import { Layout } from './components/ui/Layout';
 import { SimpleLayout } from './components/ui/SimpleLayout';
@@ -64,6 +66,9 @@ const App: React.FC = () => {
         {/* Cancel and Reschedule Booking Pages */}
         <Route path="/cancel-booking/:bookingId" element={<SimpleLayout><CancelBookingPage /></SimpleLayout>} />
         <Route path="/reschedule-booking/:bookingId" element={<SimpleLayout><RescheduleBookingPage /></SimpleLayout>} />
+
+        <Route path="/privacy-policy" element={<SimpleLayout><PrivacyPolicy /></SimpleLayout>} />
+        <Route path="/terms-of-service" element={<SimpleLayout><TermsOfService /></SimpleLayout>} />
         
         <Route path="/login" element={<Layout><Login /></Layout>} />
         
