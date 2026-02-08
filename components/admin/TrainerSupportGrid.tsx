@@ -1,6 +1,6 @@
 import React from 'react';
 import { format, isSameDay } from 'date-fns';
-import { Phone, Mail } from 'lucide-react';
+import { Phone, Mail, Link as LinkIcon } from 'lucide-react';
 import { Badge, Card } from '../ui/Common';
 import { SupportSlot } from './TrainerSupportTypes';
 import { User } from '../../types';
@@ -17,7 +17,10 @@ export const TrainerSupportGrid = ({
   trainers,
   slotsByTrainer,
   onSlotSelect
-}: TrainerSupportGridProps) => (
+}: TrainerSupportGridProps) => {
+  const appOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+
+  return (
   <Card className="overflow-hidden">
     <div className="grid grid-cols-[200px_repeat(7,1fr)] border-b" style={{ backgroundColor: '#fedac2' }}>
       <div className="p-3 font-semibold border-r" style={{ color: '#fc5d01' }}>Trainer</div>
@@ -43,6 +46,22 @@ export const TrainerSupportGrid = ({
           <div className="p-3 border-r">
             <div className="font-medium text-sm" style={{ color: '#fc5d01' }}>{trainer.name}</div>
             <div className="text-xs text-slate-500">{trainer.email}</div>
+            {trainer.slug ? (
+              <a
+                href={`${appOrigin}/trainer/${trainer.slug}`}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium underline break-all"
+                style={{ color: '#fd7f33' }}
+              >
+                <LinkIcon className="w-3 h-3" />
+                {`${appOrigin}/trainer/${trainer.slug}`}
+              </a>
+            ) : (
+              <div className="mt-1 text-[10px]" style={{ color: '#ffac7b' }}>
+                Chưa có booking link
+              </div>
+            )}
             <div className="flex gap-2 mt-2">
               <Badge className="text-[10px] px-2 py-0.5" style={{ backgroundColor: '#fedac2', color: '#fc5d01' }}>
                 Support
@@ -85,4 +104,5 @@ export const TrainerSupportGrid = ({
       ))
     )}
   </Card>
-);
+  );
+};
