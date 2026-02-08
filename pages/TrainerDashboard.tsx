@@ -43,9 +43,10 @@ import app from '../services/firebase';
 
 export const TrainerDashboard = () => {
   const { user } = useAuthStore();
-  const { bookings, blockedSlots, externalBookings, fetchData, updateBookingStatus, updateUserAvailability, updateUserProfile } = useDataStore();
+  const { bookings, blockedSlots, externalBookings, fetchData, updateBookingStatus, updateUserAvailability, updateUserProfile, syncMissingCalendarEvents } = useDataStore();
   const [activeTab, setActiveTab] = useState<'bookings' | 'schedule' | 'blocked' | 'students' | 'settings'>('bookings');
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [isSyncingMissingEvents, setIsSyncingMissingEvents] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -59,6 +60,8 @@ export const TrainerDashboard = () => {
     
   const myBlockedSlots = blockedSlots.filter(b => b.trainerId === user.id);
   const myExternalBookings = externalBookings.filter(b => b.trainerId === user.id);
+  const myBookingsSyncedToGoogle = myBookings.filter(b => !!b.calendarEventId);
+  const myBookingsSystemOnly = myBookings.filter(b => !b.calendarEventId);
 
   // Group bookings by date for list view
   const groupedBookings = myBookings.reduce((acc, booking) => {
@@ -121,6 +124,33 @@ export const TrainerDashboard = () => {
     handleGoogleSync();
   };
 
+  const handleSyncMissingEvents = async () => {
+    if (!user?.id) return;
+
+    setIsSyncingMissingEvents(true);
+    try {
+      const isConnected = await testCalendarConnection(user.id);
+      if (!isConnected) {
+        toast.error('Google Calendar đã mất kết nối. Vui lòng reconnect.');
+        return;
+      }
+
+      const result = await syncMissingCalendarEvents(user.id);
+      if (result.synced === 0 && result.failed === 0) {
+        toast.success('Không có booking nào cần đồng bộ thêm.');
+      } else if (result.failed === 0) {
+        toast.success(`Đồng bộ thành công ${result.synced} booking lên Google Calendar.`);
+      } else {
+        toast(`Đã đồng bộ ${result.synced}, còn lỗi ${result.failed}. Bạn có thể thử lại.`);
+      }
+    } catch (error) {
+      console.error('Error syncing missing calendar events:', error);
+      toast.error('Không thể đồng bộ booking thiếu event Google Calendar.');
+    } finally {
+      setIsSyncingMissingEvents(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -164,6 +194,21 @@ export const TrainerDashboard = () => {
 
       {activeTab === 'bookings' && (
         <div className="space-y-6 animate-in fade-in duration-500">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Card className="p-3">
+              <p className="text-xs font-semibold" style={{ color: '#fc5d01' }}>Chỉ trên hệ thống</p>
+              <p className="text-2xl font-bold">{myBookingsSystemOnly.length}</p>
+            </Card>
+            <Card className="p-3">
+              <p className="text-xs font-semibold" style={{ color: '#fd7f33' }}>Trên hệ thống + Google Calendar</p>
+              <p className="text-2xl font-bold">{myBookingsSyncedToGoogle.length}</p>
+            </Card>
+            <Card className="p-3">
+              <p className="text-xs font-semibold" style={{ color: '#fc5d01' }}>Chỉ trên Google Calendar</p>
+              <p className="text-2xl font-bold">{myExternalBookings.length}</p>
+            </Card>
+          </div>
+
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-semibold">Upcoming Sessions</h3>
             <div className="flex bg-slate-100 p-1 rounded-md border border-slate-200">
@@ -200,6 +245,16 @@ export const TrainerDashboard = () => {
                             <Badge className={booking.status === 'confirmed' ? 'bg-green-600' : 'bg-red-500'}>
                               {booking.status}
                             </Badge>
+                            <Badge
+                              className="border"
+                              style={{
+                                backgroundColor: booking.calendarEventId ? '#fedac2' : '#ffffff',
+                                borderColor: '#fc5d01',
+                                color: '#fc5d01'
+                              }}
+                            >
+                              {booking.calendarEventId ? 'System + GCal' : 'System only'}
+                            </Badge>
                             {booking.isRecurring && (
                               <Badge className="bg-purple-100 text-purple-700 border-purple-200">
                                 Recurring
@@ -228,6 +283,28 @@ export const TrainerDashboard = () => {
               ))}
               {myBookings.length === 0 && (
                 <div className="text-center py-12 text-slate-500">No bookings found.</div>
+              )}
+
+              {myExternalBookings.length > 0 && (
+                <Card className="p-4">
+                  <h4 className="font-semibold mb-3">Google Calendar only events</h4>
+                  <div className="space-y-2">
+                    {myExternalBookings
+                      .filter(ex => new Date(ex.start) > new Date())
+                      .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+                      .map(ex => (
+                        <div key={ex.id} className="flex items-center justify-between p-2 rounded border">
+                          <div>
+                            <p className="text-sm font-medium">{ex.title || 'Google Calendar Event'}</p>
+                            <p className="text-xs text-slate-500">{format(new Date(ex.start), 'MMM d, yyyy HH:mm')}</p>
+                          </div>
+                          <Badge className="border" style={{ backgroundColor: '#ffffff', borderColor: '#fc5d01', color: '#fc5d01' }}>
+                            GCal only
+                          </Badge>
+                        </div>
+                      ))}
+                  </div>
+                </Card>
               )}
             </div>
           ) : (
@@ -348,6 +425,15 @@ export const TrainerDashboard = () => {
                   onClick={handleGoogleSync}
                 >
                   Disconnect Google Calendar
+                </Button>
+
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleSyncMissingEvents}
+                  disabled={isSyncingMissingEvents}
+                >
+                  {isSyncingMissingEvents ? 'Đang đồng bộ...' : 'Đồng bộ các booking bị thiếu event'}
                 </Button>
               </div>
             ) : (

@@ -30,6 +30,7 @@ interface DataState {
   // Bookings
   addBooking: (booking: Omit<Booking, 'id' | 'createdAt'>) => Promise<Booking>;
   addRecurringBooking: (bookingData: any, start: Date, duration: number, weeks: number) => Promise<void>;
+  syncMissingCalendarEvents: (trainerId: string) => Promise<{ synced: number; failed: number }>;
   updateBookingStatus: (id: string, status: 'confirmed' | 'cancelled') => Promise<void>;
   updateRecurringBooking: (groupId: string, updateData: Partial<Booking>) => Promise<void>;
   deleteRecurringBooking: (groupId: string) => Promise<void>;
@@ -472,7 +473,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       }
     } catch (calendarError: any) {
       // Handle CalendarDisconnectedError - mark calendar as disconnected
-      if (calendarError instanceof CalendarDisconnectedError) {
+      if (calendarError instanceof CalendarDisconnectedError && calendarError.reason !== 'network_error') {
         console.error('⚠️ Calendar disconnected:', calendarError.message);
         console.log('📝 Marking calendar as disconnected for trainer:', bookingData.trainerId);
         
@@ -502,6 +503,10 @@ export const useDataStore = create<DataState>((set, get) => ({
         } catch (updateError) {
           console.error('❌ Failed to update disconnected status:', updateError);
         }
+      } else if (calendarError instanceof CalendarDisconnectedError && calendarError.reason === 'network_error') {
+        // IMPORTANT: Temporary network errors should NOT disconnect calendar
+        console.warn('🌐 Temporary Google Calendar network error. Keeping calendar connected.');
+        console.warn('📝 Booking is saved and can be synced to calendar later.');
       } else {
         // Other errors (network, etc.)
         console.error('❌ Calendar event creation failed:', calendarError);
@@ -581,7 +586,7 @@ export const useDataStore = create<DataState>((set, get) => ({
           console.log(`✅ Google Calendar event ${i + 1}/${weeks} created successfully`);
         } catch (calendarError: any) {
           // Handle CalendarDisconnectedError - mark calendar as disconnected
-          if (calendarError instanceof CalendarDisconnectedError) {
+          if (calendarError instanceof CalendarDisconnectedError && calendarError.reason !== 'network_error') {
             console.error(`⚠️ Calendar disconnected at booking ${i + 1}/${weeks}:`, calendarError.message);
             calendarDisconnected = true;
             
@@ -613,6 +618,9 @@ export const useDataStore = create<DataState>((set, get) => ({
                 console.error('❌ Failed to update disconnected status:', updateError);
               }
             }
+          } else if (calendarError instanceof CalendarDisconnectedError && calendarError.reason === 'network_error') {
+            console.warn(`🌐 Temporary calendar network error at booking ${i + 1}/${weeks}. Will keep calendar connected.`);
+            calendarErrorOccurred = true;
           } else {
             // Other errors (network, etc.)
             console.error(`❌ Calendar event ${i + 1}/${weeks} creation failed:`, calendarError.message);
@@ -647,6 +655,93 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
 
     set((state) => ({ bookings: [...state.bookings, ...newBookings] }));
+  },
+
+  syncMissingCalendarEvents: async (trainerId: string) => {
+    const db = getFirestore(app);
+    const { bookings, trainers, eventTypes } = get();
+
+    const trainer = trainers.find(t => t.id === trainerId);
+    if (!trainer || !trainer.googleCalendarConnected || !trainer.email) {
+      return { synced: 0, failed: 0 };
+    }
+
+    const pendingBookings = bookings.filter(b =>
+      b.trainerId === trainerId &&
+      b.status === 'confirmed' &&
+      !b.calendarEventId &&
+      new Date(b.endTime) > new Date()
+    );
+
+    if (pendingBookings.length === 0) {
+      return { synced: 0, failed: 0 };
+    }
+
+    let synced = 0;
+    let failed = 0;
+
+    for (const booking of pendingBookings) {
+      const eventType = eventTypes.find(et => et.id === booking.eventTypeId);
+      if (!eventType) {
+        failed += 1;
+        continue;
+      }
+
+      try {
+        const eventId = await createBookingCalendarEvent(
+          trainer.id,
+          trainer.email,
+          booking.studentEmail,
+          eventType.name,
+          trainer.name || 'Trainer',
+          booking.studentName,
+          new Date(booking.startTime),
+          new Date(booking.endTime),
+          trainer.zoomMeetingLink,
+          booking.note,
+          booking.studentTimezone,
+          booking.id
+        );
+
+        const bookingRef = doc(db, "bookings", booking.id);
+        await updateDoc(bookingRef, { calendarEventId: eventId });
+        synced += 1;
+      } catch (error: any) {
+        failed += 1;
+        console.error(`❌ Failed to sync calendar event for booking ${booking.id}:`, error);
+
+        if (error instanceof CalendarDisconnectedError && error.reason !== 'network_error') {
+          try {
+            const { setDoc } = await import("firebase/firestore");
+            const userRef = doc(db, 'users', trainerId);
+            await setDoc(userRef, {
+              googleCalendarConnected: false,
+              calendarDisconnectedReason: error.reason,
+              calendarDisconnectedAt: new Date().toISOString(),
+            }, { merge: true });
+
+            try {
+              const trainerRef = doc(db, 'trainers', trainerId);
+              await setDoc(trainerRef, {
+                googleCalendarConnected: false,
+                calendarDisconnectedReason: error.reason,
+                calendarDisconnectedAt: new Date().toISOString(),
+              }, { merge: true });
+            } catch {
+              // Trainer doc may not exist
+            }
+          } catch (disconnectUpdateError) {
+            console.error('❌ Failed to mark calendar disconnected while syncing missing events:', disconnectUpdateError);
+          }
+
+          // Stop syncing further events if token is invalid/revoked
+          break;
+        }
+      }
+    }
+
+    await get().fetchData();
+    return { synced, failed };
   },
 
   updateBookingStatus: async (id, status) => {
