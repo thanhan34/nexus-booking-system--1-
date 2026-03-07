@@ -10,6 +10,11 @@ import {
   deleteBookingCalendarEvent,
   CalendarDisconnectedError 
 } from './services/calendar';
+import {
+  sendCalendarEventFailureNotificationToDiscord,
+  sendZoomConflictNotificationToDiscord,
+} from './services/discord';
+import { analyzeZoomConflicts } from './utils/zoomConflict';
 
 interface AuthState {
   user: User | null;
@@ -419,19 +424,62 @@ export const useDataStore = create<DataState>((set, get) => ({
   addBooking: async (bookingData) => {
     const db = getFirestore(app);
     const bookingRef = collection(db, "bookings");
+    const { trainers, eventTypes, bookings } = get();
+    const trainer = trainers.find(t => t.id === bookingData.trainerId);
+    const eventType = eventTypes.find(et => et.id === bookingData.eventTypeId);
     
     // STEP 1: Always create booking in database first (this must succeed)
     const docRef = await addDoc(bookingRef, bookingData);
     let newBooking = { id: docRef.id, ...bookingData } as Booking;
     
     console.log('✅ Booking created in database:', docRef.id);
+
+    // STEP 1.5: Detect Zoom conflict for newly created booking and alert Discord
+    try {
+      const conflictResult = analyzeZoomConflicts({
+        bookings: [...bookings, newBooking],
+        trainers,
+        rangeStart: new Date(newBooking.startTime),
+        rangeEnd: new Date(newBooking.endTime),
+      });
+
+      const newBookingConflict = conflictResult.zoomLinkConflicts.find(
+        conflict => conflict.bookingId === newBooking.id && conflict.reason === 'link_conflict'
+      );
+
+      if (newBookingConflict && trainer) {
+        const bookingMap = new Map([...bookings, newBooking].map(b => [b.id, b]));
+        const trainerMap = new Map(trainers.map(t => [t.id, t]));
+
+        const conflictTrainerNames = Array.from(
+          new Set(
+            newBookingConflict.conflictWithBookingIds
+              .map((bookingId) => bookingMap.get(bookingId)?.trainerId)
+              .filter(Boolean)
+              .map((trainerId) => trainerMap.get(trainerId as string)?.name || trainerMap.get(trainerId as string)?.email)
+              .filter(Boolean) as string[]
+          )
+        );
+
+        sendZoomConflictNotificationToDiscord({
+          bookingId: newBooking.id,
+          trainerName: trainer.name || trainer.email || 'Unknown trainer',
+          trainerEmail: trainer.email,
+          zoomLink: trainer.zoomMeetingLink,
+          startTime: newBooking.startTime,
+          endTime: newBooking.endTime,
+          conflictBookingIds: newBookingConflict.conflictWithBookingIds,
+          conflictTrainerNames,
+        }).catch(error => {
+          console.error('❌ [Discord] Failed to send zoom conflict notification:', error);
+        });
+      }
+    } catch (zoomConflictError) {
+      console.error('⚠️ Failed to analyze/send zoom conflict alert:', zoomConflictError);
+    }
     
     // STEP 2: Try to create Google Calendar event (best-effort, non-blocking)
     try {
-      const { trainers, eventTypes } = get();
-      const trainer = trainers.find(t => t.id === bookingData.trainerId);
-      const eventType = eventTypes.find(et => et.id === bookingData.eventTypeId);
-      
       // Only attempt calendar event if trainer has connected Google Calendar
       if (trainer && trainer.email && eventType && trainer.googleCalendarConnected) {
         console.log('🗓️ Creating Google Calendar event...');
@@ -479,6 +527,21 @@ export const useDataStore = create<DataState>((set, get) => ({
         }
       }
     } catch (calendarError: any) {
+      sendCalendarEventFailureNotificationToDiscord({
+        context: 'student_booking',
+        bookingId: newBooking.id,
+        trainerName: trainer?.name,
+        trainerEmail: trainer?.email,
+        studentName: newBooking.studentName,
+        studentEmail: newBooking.studentEmail,
+        eventTypeName: eventType?.name,
+        startTime: newBooking.startTime,
+        endTime: newBooking.endTime,
+        reason: calendarError?.message || String(calendarError),
+      }).catch(error => {
+        console.error('❌ [Discord] Failed to send calendar failure alert:', error);
+      });
+
       // Handle CalendarDisconnectedError - mark calendar as disconnected
       if (calendarError instanceof CalendarDisconnectedError && calendarError.reason !== 'network_error') {
         console.error('⚠️ Calendar disconnected:', calendarError.message);

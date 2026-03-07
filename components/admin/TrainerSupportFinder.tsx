@@ -6,6 +6,7 @@ import { Button, Card, Select } from '../ui/Common';
 import { generateAvailableSlots } from '../../utils/availability';
 import { SYSTEM_TIMEZONE } from '../../utils/timezone';
 import { createCalendarEvent } from '../../services/calendar';
+import { sendCalendarEventFailureNotificationToDiscord } from '../../services/discord';
 import { doc, getFirestore, updateDoc } from 'firebase/firestore';
 import app from '../../services/firebase';
 import { useDataStore } from '../../store';
@@ -192,6 +193,24 @@ export const TrainerSupportFinder = ({
       setSelectedSlot(null);
     } catch (error: any) {
       console.error('❌ Failed to create support event:', error);
+
+      sendCalendarEventFailureNotificationToDiscord({
+        context: 'support_booking',
+        bookingId: selectedSlot.booking.id,
+        trainerName: selectedSlot.trainer.name,
+        trainerEmail: selectedSlot.trainer.email,
+        studentName: selectedSlot.booking.studentName,
+        studentEmail: selectedSlot.booking.studentEmail,
+        eventTypeName: eventTypes.find(et => et.id === selectedSlot.booking.eventTypeId)?.name || 'Admin Session',
+        startTime: selectedSlot.booking.startTime,
+        endTime: selectedSlot.booking.endTime,
+        supportByName: adminUser?.name,
+        supportByEmail: adminUser?.email,
+        reason: error?.message || String(error),
+      }).catch(discordError => {
+        console.error('❌ [Discord] Failed to send support booking calendar failure alert:', discordError);
+      });
+
       toast.error(error.message || 'Không thể tạo event Google Calendar');
     } finally {
       setSaving(false);
