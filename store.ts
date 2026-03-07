@@ -79,7 +79,8 @@ export const useAuthStore = create<AuthState>((set) => ({
             email: currentUser.email || email, 
             name: currentUser.displayName || userData.name || '', 
             role: userRole, 
-            availability: userData.availability 
+            availability: userData.availability,
+            preferredZoomLinks: userData.preferredZoomLinks || []
           } 
         });
         return;
@@ -104,7 +105,8 @@ export const useAuthStore = create<AuthState>((set) => ({
           email: currentUser.email || email, 
           name: currentUser.displayName || userData.name || '', 
           role: userRole, 
-          availability: userData.availability 
+          availability: userData.availability,
+          preferredZoomLinks: userData.preferredZoomLinks || []
         } 
       });
       return;
@@ -126,7 +128,8 @@ export const useAuthStore = create<AuthState>((set) => ({
           email: currentUser.email || email, 
           name: currentUser.displayName || trainer.name || '', 
           role: trainerRole, 
-          availability: trainer.availability 
+          availability: trainer.availability,
+          preferredZoomLinks: trainer.preferredZoomLinks || []
         } 
       });
     } else {
@@ -238,7 +241,8 @@ export const useAuthStore = create<AuthState>((set) => ({
                 slug: userData.slug,
                 googleCalendarConnected: userData.googleCalendarConnected,
                 googleCalendarEmail: userData.googleCalendarEmail,
-                photoUrl: user.photoURL || userData.photoUrl
+                photoUrl: user.photoURL || userData.photoUrl,
+                preferredZoomLinks: userData.preferredZoomLinks || []
               }, 
               loading: false 
             });
@@ -285,7 +289,8 @@ export const useAuthStore = create<AuthState>((set) => ({
               slug: userData.slug,
               googleCalendarConnected: userData.googleCalendarConnected,
               googleCalendarEmail: userData.googleCalendarEmail,
-              photoUrl: user.photoURL || userData.photoUrl
+              photoUrl: user.photoURL || userData.photoUrl,
+              preferredZoomLinks: userData.preferredZoomLinks || []
             }, 
             loading: false 
           });
@@ -318,7 +323,8 @@ export const useAuthStore = create<AuthState>((set) => ({
               availability: trainerData.availability,
               slug: trainerData.slug,
               googleCalendarConnected: trainerData.googleCalendarConnected,
-              googleCalendarEmail: trainerData.googleCalendarEmail
+              googleCalendarEmail: trainerData.googleCalendarEmail,
+              preferredZoomLinks: trainerData.preferredZoomLinks || []
             }, 
             loading: false 
           });
@@ -334,7 +340,8 @@ export const useAuthStore = create<AuthState>((set) => ({
               email: user.email || '', 
               name: user.displayName || '', 
               role: 'trainer',
-              slug: defaultSlug
+              slug: defaultSlug,
+              preferredZoomLinks: []
             }, 
             loading: false 
           });

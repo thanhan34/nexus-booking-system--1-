@@ -40,7 +40,9 @@ export const fetchUsers = async () => {
         email: data.email || '',
         name: data.name || data.displayName || data.email?.split('@')[0] || 'Unknown User',
         role: data.role || 'user',
-        slug: data.slug || ''
+        slug: data.slug || '',
+        zoomMeetingLink: data.zoomMeetingLink || '',
+        preferredZoomLinks: Array.isArray(data.preferredZoomLinks) ? data.preferredZoomLinks : []
       });
     });
     
@@ -56,7 +58,11 @@ export const fetchUsers = async () => {
           email: existingUser.email || data.email || '',
           name: existingUser.name || data.name || data.displayName || data.email?.split('@')[0] || 'Unknown User',
           role: existingUser.role || data.role || 'trainer',
-          slug: existingUser.slug || data.slug || ''
+          slug: existingUser.slug || data.slug || '',
+          zoomMeetingLink: existingUser.zoomMeetingLink || data.zoomMeetingLink || '',
+          preferredZoomLinks: existingUser.preferredZoomLinks?.length
+            ? existingUser.preferredZoomLinks
+            : (Array.isArray(data.preferredZoomLinks) ? data.preferredZoomLinks : [])
         });
       } else {
         // Add new trainer
@@ -65,7 +71,9 @@ export const fetchUsers = async () => {
           email: data.email || '',
           name: data.name || data.displayName || data.email?.split('@')[0] || 'Unknown User',
           role: data.role || 'trainer',
-          slug: data.slug || ''
+          slug: data.slug || '',
+          zoomMeetingLink: data.zoomMeetingLink || '',
+          preferredZoomLinks: Array.isArray(data.preferredZoomLinks) ? data.preferredZoomLinks : []
         });
       }
     });

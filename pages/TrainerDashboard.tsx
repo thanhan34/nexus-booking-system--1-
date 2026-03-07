@@ -335,6 +335,17 @@ export const TrainerDashboard = () => {
             </div>
             
             <ZoomLinkEditor userId={user.id} currentLink={user.zoomMeetingLink || ''} />
+
+            <div className="pt-3 border-t border-slate-200">
+              <h4 className="font-semibold text-sm mb-1">Preferred Zoom Links (Priority)</h4>
+              <p className="text-xs text-slate-500 mb-3">
+                Nhập nhiều Zoom link theo thứ tự ưu tiên (mỗi dòng 1 link). Hệ thống sẽ ưu tiên link trên cùng trước.
+              </p>
+              <PreferredZoomLinksEditor
+                userId={user.id}
+                currentLinks={user.preferredZoomLinks || []}
+              />
+            </div>
             
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-xs text-blue-800">
@@ -738,6 +749,124 @@ const ZoomLinkEditor = ({ userId, currentLink }: { userId: string, currentLink: 
             Add Zoom Link
           </Button>
         </div>
+      )}
+    </div>
+  );
+};
+
+const PreferredZoomLinksEditor = ({ userId, currentLinks }: { userId: string; currentLinks: string[] }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [value, setValue] = useState((currentLinks || []).join('\n'));
+  const [isSaving, setIsSaving] = useState(false);
+  const { updateUserProfile } = useDataStore();
+
+  const parseLinks = (raw: string): string[] => {
+    const lines = raw
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean);
+
+    const unique: string[] = [];
+    for (const line of lines) {
+      if (!unique.includes(line)) {
+        unique.push(line);
+      }
+    }
+    return unique;
+  };
+
+  const isValidZoomLink = (link: string): boolean => {
+    try {
+      const url = new URL(link);
+      return url.hostname.includes('zoom.us') || url.hostname.includes('zoom.com');
+    } catch {
+      return false;
+    }
+  };
+
+  const handleSave = async () => {
+    const parsedLinks = parseLinks(value);
+
+    const invalidLink = parsedLinks.find(link => !isValidZoomLink(link));
+    if (invalidLink) {
+      toast.error(`Link không hợp lệ: ${invalidLink}`);
+      return;
+    }
+
+    const currentSerialized = JSON.stringify(currentLinks || []);
+    const nextSerialized = JSON.stringify(parsedLinks);
+    if (currentSerialized === nextSerialized) {
+      setIsEditing(false);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await updateUserProfile(userId, {
+        preferredZoomLinks: parsedLinks,
+      });
+      toast.success('Đã lưu danh sách Zoom ưu tiên');
+      setIsEditing(false);
+    } catch (error) {
+      console.error(error);
+      toast.error('Không thể lưu danh sách Zoom ưu tiên');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setValue((currentLinks || []).join('\n'));
+    setIsEditing(false);
+  };
+
+  if (isEditing) {
+    return (
+      <div className="space-y-2">
+        <textarea
+          rows={5}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="w-full rounded-md border border-slate-300 p-2 text-sm font-mono focus:ring-2 focus:ring-slate-900 focus:outline-none"
+          placeholder="https://us06web.zoom.us/j/11111111111\nhttps://us06web.zoom.us/j/22222222222"
+          disabled={isSaving}
+        />
+        <div className="flex gap-2">
+          <Button onClick={handleSave} size="sm" disabled={isSaving}>
+            {isSaving ? 'Saving...' : 'Save Priority Links'}
+          </Button>
+          <Button onClick={handleCancel} variant="outline" size="sm" disabled={isSaving}>
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {currentLinks?.length ? (
+        <>
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <ol className="list-decimal pl-4 space-y-1 text-xs text-slate-700">
+              {currentLinks.map((link, index) => (
+                <li key={`${link}-${index}`} className="break-all font-mono">
+                  {link}
+                </li>
+              ))}
+            </ol>
+          </div>
+          <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
+            Edit Priority Links
+          </Button>
+        </>
+      ) : (
+        <>
+          <p className="text-sm text-slate-500">Chưa có link ưu tiên</p>
+          <Button onClick={() => setIsEditing(true)} size="sm">
+            Add Priority Links
+          </Button>
+        </>
       )}
     </div>
   );

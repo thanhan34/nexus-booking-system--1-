@@ -13,6 +13,7 @@ export interface User {
   eventTypes?: string[];
   photoUrl?: string;
   zoomMeetingLink?: string;
+  preferredZoomLinks?: string[];
 }
 
 export interface WeeklyAvailability {

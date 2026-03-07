@@ -3,6 +3,7 @@ import { Calendar } from 'lucide-react';
 import { Booking, BlockedSlot, ExternalBooking, EventType, User } from '../../types';
 import { MasterScheduleView } from './MasterScheduleView';
 import { TrainerSupportFinder } from './TrainerSupportFinder';
+import { ZoomConflictMonitor } from './ZoomConflictMonitor';
 
 interface AdminScheduleTabsProps {
   trainers: User[];
@@ -24,6 +25,12 @@ export const AdminScheduleTabs = ({
   isSupportOnly = false
 }: AdminScheduleTabsProps) => (
   <div className="space-y-8 animate-in fade-in duration-500">
+    <ZoomConflictMonitor
+      trainers={trainers}
+      bookings={bookings}
+      isSupportOnly={isSupportOnly}
+    />
+
     <div>
       <h2 className="text-2xl font-bold text-slate-800 mb-6">Trainer Schedules</h2>
       <MasterScheduleView
