@@ -2,6 +2,14 @@ import React from 'react';
 import { Users, Mail, Trash2 } from 'lucide-react';
 import { Badge, Card, Select } from '../ui/Common';
 
+const sanitizeSlug = (value: string) =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
 interface UserManagementTabProps {
   users: any[];
   setUsers: React.Dispatch<React.SetStateAction<any[]>>;
@@ -121,12 +129,23 @@ export const UserManagementTab = ({
                       type="text"
                       value={user.slug || ''}
                       onChange={(e) => {
-                        const newSlug = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+                        const newSlug = sanitizeSlug(e.target.value);
                         setUsers(users.map((u: any) => u.id === user.id ? { ...u, slug: newSlug } : u));
                       }}
+                      onFocus={(e) => {
+                        e.currentTarget.dataset.initialSlug = user.slug || '';
+                      }}
                       onBlur={(e) => {
-                        if (e.target.value !== user.slug) {
-                          onSlugUpdate(user.id, e.target.value, user.name || user.email);
+                        const finalSlug = sanitizeSlug(e.target.value);
+                        const initialSlug = e.currentTarget.dataset.initialSlug || '';
+
+                        // Sync local state if sanitization changed the field on blur.
+                        if (finalSlug !== (user.slug || '')) {
+                          setUsers(users.map((u: any) => u.id === user.id ? { ...u, slug: finalSlug } : u));
+                        }
+
+                        if (finalSlug !== initialSlug) {
+                          onSlugUpdate(user.id, finalSlug, user.name || user.email);
                         }
                       }}
                       placeholder="e.g., pte-intensive"
