@@ -79,7 +79,7 @@ export const UserManagementTab = ({
                           }
                         }}
                         placeholder="Enter name..."
-                        className="px-3 py-1.5 border rounded-lg w-48 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-1"
+                        className="px-3 py-1.5 border rounded-lg w-48 text-sm font-medium text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-offset-1"
                         style={{ borderColor: user.name ? '#e2e8f0' : '#fc5d01', focusRing: '#fc5d01' }}
                       />
                     </div>
@@ -100,7 +100,7 @@ export const UserManagementTab = ({
                           }
                         }}
                         placeholder="Enter email..."
-                        className="px-3 py-1.5 border rounded-lg w-56 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-1"
+                        className="px-3 py-1.5 border rounded-lg w-56 text-sm font-medium text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-offset-1"
                         style={{ borderColor: user.email ? '#e2e8f0' : '#fc5d01', focusRing: '#fc5d01' }}
                       />
                     </div>
@@ -149,7 +149,7 @@ export const UserManagementTab = ({
                         }
                       }}
                       placeholder="e.g., pte-intensive"
-                      className="px-3 py-2 border rounded-lg w-48 text-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
+                      className="px-3 py-2 border rounded-lg w-48 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-1"
                       style={{ borderColor: '#fdbc94', focusRing: '#fc5d01' }}
                     />
                   </td>
@@ -157,7 +157,7 @@ export const UserManagementTab = ({
                     <Select
                       value={user.role || 'user'}
                       onChange={(e) => onRoleChange(user.id, e.target.value, user.email)}
-                      className="w-40"
+                      className="w-40 bg-white text-slate-700"
                       style={{ borderColor: '#fdbc94' }}
                     >
                       <option value="admin">Admin</option>

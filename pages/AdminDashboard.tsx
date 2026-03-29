@@ -7,10 +7,11 @@ import { StudentsView } from '../components/admin/StudentsView';
 import { EventTypesTab } from '../components/admin/EventTypesTab';
 import { RecurringBookingManager } from '../components/admin/RecurringBookingManager';
 import { Button } from '../components/ui/Common';
-import { Users, Calendar, BookOpen, Shield, RefreshCw, Layers, Repeat } from 'lucide-react';
+import { Users, Calendar, BookOpen, Shield, RefreshCw, Layers, Repeat, GraduationCap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AdminScheduleTabs } from '../components/admin/AdminScheduleTabs';
 import { UserManagementTab } from '../components/admin/UserManagementTab';
+import { ExamCandidatesTab } from '../components/admin/ExamCandidatesTab';
 
 const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
@@ -125,6 +126,7 @@ const AdminDashboard = () => {
     { id: 'recurring', label: 'Recurring Bookings', icon: Repeat },
     { id: 'schedule', label: 'Trainer Schedules', icon: Calendar },
     { id: 'bookings', label: 'All Bookings', icon: BookOpen },
+    { id: 'exams', label: 'Exam Schedule', icon: GraduationCap },
     { id: 'students', label: 'Student History', icon: Shield },
   ];
 
@@ -136,7 +138,7 @@ const AdminDashboard = () => {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h1 className="text-3xl font-bold" style={{ color: '#fc5d01' }}>Admin Dashboard</h1>
-              <p className="text-slate-600 mt-1">Welcome back, {currentUser?.name || currentUser?.email}</p>
+              <p className="text-slate-600 mt-2 inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-1.5 shadow-sm">Welcome back, {currentUser?.name || currentUser?.email}</p>
             </div>
             <Button 
               onClick={handleRefresh} 
@@ -212,6 +214,12 @@ const AdminDashboard = () => {
           <div className="animate-in fade-in duration-500">
             <h2 className="text-2xl font-bold text-slate-800 mb-6">All Bookings</h2>
             <BookingsTab />
+          </div>
+        )}
+
+        {activeTab === 'exams' && (
+          <div className="animate-in fade-in duration-500">
+            <ExamCandidatesTab />
           </div>
         )}
 

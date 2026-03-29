@@ -385,7 +385,7 @@ export const RecurringBookingManager = () => {
                     <div>
                       <label className="block text-sm font-medium mb-1">Ghi Chú (Optional)</label>
                       <textarea
-                        className="w-full rounded-md border border-slate-300 p-2 text-sm focus:ring-2 focus:outline-none"
+                        className="w-full rounded-md border border-slate-300 bg-white p-2 text-sm text-slate-700 focus:ring-2 focus:outline-none"
                         style={{ focusRing: '#fc5d01' }}
                         rows={3}
                         value={formData.note}
@@ -568,7 +568,7 @@ export const RecurringBookingManager = () => {
                       <div>
                         <label className="block text-sm font-medium mb-1">Ghi Chú</label>
                         <textarea
-                          className="w-full rounded-md border border-slate-300 p-2 text-sm focus:ring-2 focus:outline-none"
+                          className="w-full rounded-md border border-slate-300 bg-white p-2 text-sm text-slate-700 focus:ring-2 focus:outline-none"
                           rows={3}
                           value={editFormData.note}
                           onChange={e => setEditFormData({ ...editFormData, note: e.target.value })}

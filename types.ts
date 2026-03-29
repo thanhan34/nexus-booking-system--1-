@@ -83,3 +83,15 @@ export interface ExternalBooking {
   trainerId: string;
   title?: string;
 }
+
+export interface ExamCandidate {
+  id: string;
+  studentName: string;
+  target: string;
+  examBookingDate: string;
+  status: 'upcoming' | 'completed';
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string;
+  completedAt?: string | null;
+}

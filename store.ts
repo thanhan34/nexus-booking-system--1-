@@ -1,6 +1,6 @@
 
 import { create } from 'zustand';
-import { User, EventType, Booking, BlockedSlot, ExternalBooking } from './types';
+import { User, EventType, Booking, BlockedSlot, ExternalBooking, ExamCandidate } from './types';
 import app from './services/firebase';
 import { getFirestore, collection, addDoc, deleteDoc, doc, getDocs, updateDoc, query, where } from "firebase/firestore";
 import { addDays } from 'date-fns';
@@ -30,6 +30,7 @@ interface DataState {
   bookings: Booking[];
   blockedSlots: BlockedSlot[];
   externalBookings: ExternalBooking[];
+  examCandidates: ExamCandidate[];
   fetchData: () => Promise<void>;
   
   // Bookings
@@ -53,6 +54,12 @@ interface DataState {
   // Blocked Slots
   addBlockedSlot: (data: Omit<BlockedSlot, 'id'>) => Promise<void>;
   removeBlockedSlot: (trainerId: string, date: string) => Promise<void>;
+
+  // Exam candidates
+  addExamCandidate: (data: Omit<ExamCandidate, 'id' | 'createdAt' | 'updatedAt' | 'completedAt'>) => Promise<void>;
+  updateExamCandidate: (id: string, data: Partial<Omit<ExamCandidate, 'id' | 'createdAt'>>) => Promise<void>;
+  deleteExamCandidate: (id: string) => Promise<void>;
+  markExamCandidateCompleted: (id: string, completed: boolean) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -338,7 +345,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         } else {
           // Mặc định là trainer nếu không tìm thấy
           console.log('⚠️ [NO MATCH] No user found in any collection, defaulting to trainer role');
-          const defaultSlug = generateSlug(user.displayName, user.email);
+          const defaultSlug = generateSlug(user.displayName || undefined, user.email || undefined);
           set({ 
             user: { 
               id: user.uid, 
@@ -367,6 +374,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   bookings: [],
   blockedSlots: [],
   externalBookings: [],
+  examCandidates: [],
   
   fetchData: async () => {
     const db = getFirestore(app);
@@ -375,13 +383,15 @@ export const useDataStore = create<DataState>((set, get) => ({
     const trainersCol = collection(db, "trainers");
     const bookingsCol = collection(db, "bookings");
     const blockedSlotsCol = collection(db, "blockedSlots");
+    const examCandidatesCol = collection(db, "examCandidates");
 
-    const [eventTypesSnapshot, usersSnapshot, trainersSnapshot, bookingsSnapshot, blockedSlotsSnapshot] = await Promise.all([
+    const [eventTypesSnapshot, usersSnapshot, trainersSnapshot, bookingsSnapshot, blockedSlotsSnapshot, examCandidatesSnapshot] = await Promise.all([
       getDocs(eventTypesCol),
       getDocs(usersCol),
       getDocs(trainersCol),
       getDocs(bookingsCol),
-      getDocs(blockedSlotsCol)
+      getDocs(blockedSlotsCol),
+      getDocs(examCandidatesCol)
     ]);
 
     const eventTypes = eventTypesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as EventType[];
@@ -415,10 +425,11 @@ export const useDataStore = create<DataState>((set, get) => ({
       const data = doc.data();
       return { id: doc.id, trainerId: data.trainerId, date: data.date } as BlockedSlot;
     });
+    const examCandidates = examCandidatesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ExamCandidate[];
 
     console.log('📊 [FETCH DATA] Loaded blocked slots:', blockedSlots.length);
 
-    set({ eventTypes, trainers, bookings, blockedSlots, externalBookings: [] });
+    set({ eventTypes, trainers, bookings, blockedSlots, externalBookings: [], examCandidates });
   },
 
   addBooking: async (bookingData) => {
@@ -983,6 +994,76 @@ export const useDataStore = create<DataState>((set, get) => ({
     
     set((state) => ({
       blockedSlots: state.blockedSlots.filter(b => !(b.trainerId === trainerId && b.date === date))
+    }));
+  },
+
+  addExamCandidate: async (data) => {
+    const db = getFirestore(app);
+    const examCandidatesRef = collection(db, "examCandidates");
+    const timestamp = new Date().toISOString();
+    const payload = {
+      ...data,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    const docRef = await addDoc(examCandidatesRef, payload);
+    const newCandidate = { id: docRef.id, ...payload } as ExamCandidate;
+
+    set((state) => ({
+      examCandidates: [newCandidate, ...state.examCandidates]
+    }));
+  },
+
+  updateExamCandidate: async (id, data) => {
+    const db = getFirestore(app);
+    const examCandidateRef = doc(db, "examCandidates", id);
+    const payload: Partial<ExamCandidate> = {
+      ...data,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (data.status === 'completed') {
+      payload.completedAt = new Date().toISOString();
+    }
+
+    if (data.status === 'upcoming') {
+      payload.completedAt = null;
+    }
+
+    await updateDoc(examCandidateRef, payload as any);
+
+    set((state) => ({
+      examCandidates: state.examCandidates.map(candidate =>
+        candidate.id === id ? { ...candidate, ...payload } : candidate
+      )
+    }));
+  },
+
+  deleteExamCandidate: async (id) => {
+    const db = getFirestore(app);
+    await deleteDoc(doc(db, "examCandidates", id));
+
+    set((state) => ({
+      examCandidates: state.examCandidates.filter(candidate => candidate.id !== id)
+    }));
+  },
+
+  markExamCandidateCompleted: async (id, completed) => {
+    const db = getFirestore(app);
+    const examCandidateRef = doc(db, "examCandidates", id);
+    const payload: Pick<ExamCandidate, 'status' | 'updatedAt' | 'completedAt'> = {
+      status: completed ? 'completed' : 'upcoming',
+      updatedAt: new Date().toISOString(),
+      completedAt: completed ? new Date().toISOString() : null,
+    };
+
+    await updateDoc(examCandidateRef, payload);
+
+    set((state) => ({
+      examCandidates: state.examCandidates.map(candidate =>
+        candidate.id === id ? { ...candidate, ...payload } : candidate
+      )
     }));
   },
 

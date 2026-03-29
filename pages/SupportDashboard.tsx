@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Calendar, RefreshCw } from 'lucide-react';
+import { BookOpen, Calendar, GraduationCap, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore, useDataStore } from '../store';
 import { auth, fetchUsers } from '../services/firebase';
 import { Button } from '../components/ui/Common';
 import { AdminScheduleTabs } from '../components/admin/AdminScheduleTabs';
 import { BookingsTab } from '../components/admin/BookingsTab';
+import { ExamCandidatesTab } from '../components/admin/ExamCandidatesTab';
 
 const SupportDashboard = () => {
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'schedule' | 'bookings'>('schedule');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'bookings' | 'exams'>('schedule');
   const navigate = useNavigate();
   const { user: currentUser } = useAuthStore();
   const { trainers, bookings, blockedSlots, externalBookings, eventTypes, fetchData } = useDataStore();
@@ -59,7 +60,7 @@ const SupportDashboard = () => {
                 <Calendar className="w-6 h-6" style={{ color: '#fc5d01' }} />
                 <h1 className="text-3xl font-bold" style={{ color: '#fc5d01' }}>Support Dashboard</h1>
               </div>
-              <p className="text-slate-600 mt-1">Welcome back, {currentUser?.name || currentUser?.email}</p>
+              <p className="text-slate-600 mt-2 inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-1.5 shadow-sm">Welcome back, {currentUser?.name || currentUser?.email}</p>
             </div>
             <Button
               onClick={handleRefresh}
@@ -101,6 +102,19 @@ const SupportDashboard = () => {
             <BookOpen className="w-4 h-4" />
             All Bookings
           </button>
+
+          <button
+            onClick={() => setActiveTab('exams')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all whitespace-nowrap ${
+              activeTab === 'exams'
+                ? 'text-white shadow-md'
+                : 'text-slate-600 bg-white hover:bg-slate-50'
+            }`}
+            style={activeTab === 'exams' ? { backgroundColor: '#fc5d01' } : {}}
+          >
+            <GraduationCap className="w-4 h-4" />
+            Exam Schedule
+          </button>
         </div>
 
         {activeTab === 'schedule' && (
@@ -119,6 +133,12 @@ const SupportDashboard = () => {
           <div className="animate-in fade-in duration-500">
             <h2 className="text-2xl font-bold text-slate-800 mb-6">All Bookings</h2>
             <BookingsTab />
+          </div>
+        )}
+
+        {activeTab === 'exams' && (
+          <div className="animate-in fade-in duration-500">
+            <ExamCandidatesTab />
           </div>
         )}
       </div>
