@@ -1,21 +1,30 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Calendar, GraduationCap, RefreshCw } from 'lucide-react';
+import { Ban, BookOpen, Calendar, GraduationCap, RefreshCw, Repeat } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore, useDataStore } from '../store';
 import { auth, fetchUsers } from '../services/firebase';
-import { Button } from '../components/ui/Common';
+import { Button, Card, Select } from '../components/ui/Common';
 import { AdminScheduleTabs } from '../components/admin/AdminScheduleTabs';
 import { BookingsTab } from '../components/admin/BookingsTab';
 import { ExamCandidatesTab } from '../components/admin/ExamCandidatesTab';
+import { RecurringBookingManager } from '../components/admin/RecurringBookingManager';
+import { BlockedDaysManager } from '../components/BlockedDaysManager';
 
 const SupportDashboard = () => {
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'schedule' | 'bookings' | 'exams'>('schedule');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'blocked' | 'recurring' | 'bookings' | 'exams'>('schedule');
+  const [selectedTrainerId, setSelectedTrainerId] = useState('');
   const navigate = useNavigate();
   const { user: currentUser } = useAuthStore();
   const { trainers, bookings, blockedSlots, externalBookings, eventTypes, fetchData } = useDataStore();
   const supportAdmin = trainers.find(trainer => trainer.email === 'dtan42@gmail.com');
+
+  useEffect(() => {
+    if (!selectedTrainerId && trainers.length > 0) {
+      setSelectedTrainerId(trainers[0].id);
+    }
+  }, [trainers, selectedTrainerId]);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async authUser => {
@@ -91,6 +100,32 @@ const SupportDashboard = () => {
           </button>
 
           <button
+            onClick={() => setActiveTab('blocked')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all whitespace-nowrap ${
+              activeTab === 'blocked'
+                ? 'text-white shadow-md'
+                : 'text-slate-600 bg-white hover:bg-slate-50'
+            }`}
+            style={activeTab === 'blocked' ? { backgroundColor: '#fc5d01' } : {}}
+          >
+            <Ban className="w-4 h-4" />
+            Blocked Days
+          </button>
+
+          <button
+            onClick={() => setActiveTab('recurring')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all whitespace-nowrap ${
+              activeTab === 'recurring'
+                ? 'text-white shadow-md'
+                : 'text-slate-600 bg-white hover:bg-slate-50'
+            }`}
+            style={activeTab === 'recurring' ? { backgroundColor: '#fc5d01' } : {}}
+          >
+            <Repeat className="w-4 h-4" />
+            Recurring Bookings
+          </button>
+
+          <button
             onClick={() => setActiveTab('bookings')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all whitespace-nowrap ${
               activeTab === 'bookings'
@@ -127,6 +162,41 @@ const SupportDashboard = () => {
             adminId={supportAdmin?.id}
             isSupportOnly
           />
+        )}
+
+        {activeTab === 'blocked' && (
+          <div className="space-y-6 animate-in fade-in duration-500">
+            <Card className="p-4 md:p-6">
+              <div className="flex flex-col md:flex-row gap-4 md:items-end md:justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-800">Blocked Days</h2>
+                  <p className="text-slate-600 mt-1">Chọn trainer để support có thể quản lý ngày nghỉ thay cho trainer.</p>
+                </div>
+
+                <div className="w-full md:w-80">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Trainer</label>
+                  <Select
+                    value={selectedTrainerId}
+                    onChange={(e) => setSelectedTrainerId(e.target.value)}
+                  >
+                    {trainers.map((trainer) => (
+                      <option key={trainer.id} value={trainer.id}>
+                        {trainer.name || trainer.email}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+            </Card>
+
+            {selectedTrainerId && <BlockedDaysManager managedTrainerId={selectedTrainerId} />}
+          </div>
+        )}
+
+        {activeTab === 'recurring' && (
+          <div className="animate-in fade-in duration-500">
+            <RecurringBookingManager />
+          </div>
         )}
 
         {activeTab === 'bookings' && (

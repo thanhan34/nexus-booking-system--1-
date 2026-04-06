@@ -1,19 +1,29 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAuthStore, useDataStore } from '../store';
 import { Card, Button, Input, Badge } from './ui/Common';
 import { Calendar, Ban, Trash2, Plus } from 'lucide-react';
 import { format, addDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 
-export const BlockedDaysManager = () => {
+interface BlockedDaysManagerProps {
+  managedTrainerId?: string;
+}
+
+export const BlockedDaysManager = ({ managedTrainerId }: BlockedDaysManagerProps) => {
   const { user } = useAuthStore();
-  const { blockedSlots, addBlockedSlot, removeBlockedSlot, fetchData } = useDataStore();
+  const { blockedSlots, trainers, addBlockedSlot, removeBlockedSlot, fetchData } = useDataStore();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   if (!user) return null;
 
-  const myBlockedSlots = blockedSlots.filter(b => b.trainerId === user.id);
+  const effectiveTrainerId = managedTrainerId || user.id;
+  const managedTrainer = useMemo(
+    () => trainers.find(trainer => trainer.id === effectiveTrainerId),
+    [trainers, effectiveTrainerId]
+  );
+
+  const myBlockedSlots = blockedSlots.filter(b => b.trainerId === effectiveTrainerId);
 
   const days = eachDayOfInterval({
     start: startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 1 }),
@@ -26,10 +36,10 @@ export const BlockedDaysManager = () => {
 
     try {
       if (isBlocked) {
-        await removeBlockedSlot(user.id, dateKey);
+        await removeBlockedSlot(effectiveTrainerId, dateKey);
         toast.success(`Đã bỏ chặn ngày ${format(date, 'dd/MM/yyyy')}`);
       } else {
-        await addBlockedSlot({ trainerId: user.id, date: dateKey });
+        await addBlockedSlot({ trainerId: effectiveTrainerId, date: dateKey });
         toast.success(`Đã chặn ngày ${format(date, 'dd/MM/yyyy')}`);
       }
       await fetchData();
@@ -51,7 +61,9 @@ export const BlockedDaysManager = () => {
           Quản lý ngày nghỉ / Blocked Days
         </h2>
         <p className="text-sm text-slate-500 mt-1">
-          Chọn các ngày bạn không muốn nhận booking. Những ngày này sẽ không hiển thị cho học viên khi đặt lịch.
+          {managedTrainer
+            ? `Quản lý ngày nghỉ cho ${managedTrainer.name || managedTrainer.email}. Những ngày này sẽ không hiển thị cho học viên khi đặt lịch.`
+            : 'Chọn các ngày bạn không muốn nhận booking. Những ngày này sẽ không hiển thị cho học viên khi đặt lịch.'}
         </p>
       </div>
 
