@@ -72,21 +72,47 @@ const AvailabilityForm: React.FC<AvailabilityFormProps> = ({ availability: initi
   };
 
   const handleAddTimeSlot = (day: string) => {
-    setSchedule(schedule.map(s => {
-      if (s.day === day) {
-        const lastSlot = s.timeSlots[s.timeSlots.length - 1];
-        const newStart = lastSlot ? lastSlot.end : '09:00';
-        const newEnd = lastSlot && lastSlot.end < '18:00' ? 
-          String((parseInt(lastSlot.end.split(':')[0]) + 2)).padStart(2, '0') + ':00' : 
-          '17:00';
-        
-        return {
-          ...s,
-          timeSlots: [...s.timeSlots, { start: newStart, end: newEnd }]
-        };
-      }
-      return s;
-    }));
+    const existingSlot = schedule.find(s => s.day === day);
+
+    if (!existingSlot) {
+      setSchedule([
+        ...schedule,
+        {
+          day,
+          active: true,
+          timeSlots: [{ start: '09:00', end: '17:00' }]
+        }
+      ]);
+      return;
+    }
+
+    if (!existingSlot.active) {
+      setSchedule(schedule.map(s =>
+        s.day === day
+          ? {
+              ...s,
+              active: true,
+              timeSlots: s.timeSlots.length > 0 ? s.timeSlots : [{ start: '09:00', end: '17:00' }]
+            }
+          : s
+      ));
+      return;
+    }
+
+    const lastSlot = existingSlot.timeSlots[existingSlot.timeSlots.length - 1];
+    const newStart = lastSlot ? lastSlot.end : '09:00';
+    const newEnd = lastSlot && lastSlot.end < '18:00'
+      ? String(parseInt(lastSlot.end.split(':')[0]) + 2).padStart(2, '0') + ':00'
+      : '17:00';
+
+    setSchedule(schedule.map(s =>
+      s.day === day
+        ? {
+            ...s,
+            timeSlots: [...s.timeSlots, { start: newStart, end: newEnd }]
+          }
+        : s
+    ));
   };
 
   const handleRemoveTimeSlot = (day: string, index: number) => {
@@ -183,7 +209,7 @@ const AvailabilityForm: React.FC<AvailabilityFormProps> = ({ availability: initi
                 </span>
               </div>
               
-              <div className={`space-y-3 transition-opacity ${slot.active ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+              <div className={`space-y-3 transition-opacity ${slot.active ? 'opacity-100' : 'opacity-40'}`}>
                 {slot.timeSlots.length === 0 && slot.active ? (
                   <div className="text-sm text-slate-500 italic py-2">
                     Chưa có khung giờ nào. Nhấn "Thêm khung giờ" để bắt đầu.
@@ -198,19 +224,22 @@ const AvailabilityForm: React.FC<AvailabilityFormProps> = ({ availability: initi
                         type="time" 
                         value={timeSlot.start} 
                         onChange={(e) => handleTimeChange(day, index, 'start', e.target.value)}
-                        className="w-32"
+                         className="w-32"
+                         disabled={!slot.active}
                       />
                       <span className="text-slate-400 font-medium px-1">đến</span>
                       <Input 
                         type="time" 
                         value={timeSlot.end} 
                         onChange={(e) => handleTimeChange(day, index, 'end', e.target.value)}
-                        className="w-32"
+                         className="w-32"
+                         disabled={!slot.active}
                       />
                       <Button 
                         variant="outline"
                         size="sm"
                         onClick={() => handleRemoveTimeSlot(day, index)}
+                         disabled={!slot.active}
                         className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 p-2"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -226,7 +255,7 @@ const AvailabilityForm: React.FC<AvailabilityFormProps> = ({ availability: initi
                   className="w-full border-dashed border-2 border-[#fc5d01] text-[#fc5d01] hover:bg-[#fedac2]"
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  Thêm khung giờ
+                  {slot.active ? 'Thêm khung giờ' : 'Bật ngày này và thêm khung giờ'}
                 </Button>
               </div>
             </div>
